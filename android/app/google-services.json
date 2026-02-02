@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "849266316381",
+    "project_id": "ai-interviewer-2ce7d",
+    "storage_bucket": "ai-interviewer-2ce7d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:849266316381:android:5c19b05d68cc30cab4a9b4",
+        "android_client_info": {
+          "package_name": "com.example.ai_interviewer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "849266316381-75v07aaomc9lvn6vo80mv24q09ejr2ff.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9OkMW4SbRKbKxvM9Rb4IuXc2k2Li90Eo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "849266316381-75v07aaomc9lvn6vo80mv24q09ejr2ff.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
