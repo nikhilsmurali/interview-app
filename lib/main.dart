@@ -1,4 +1,4 @@
-..import 'package:ai_interviewer/core/services/firebase_service.dart';
+import 'package:ai_interviewer/core/services/firebase_service.dart';
 import 'package:ai_interviewer/core/theme/app_theme.dart';
 import 'package:ai_interviewer/features/auth/services/auth_service.dart';
 import 'package:ai_interviewer/features/auth/screens/landing_page.dart';
@@ -7,7 +7,6 @@ import 'package:ai_interviewer/features/auth/screens/signup_screen.dart';
 import 'package:ai_interviewer/features/home/screens/home_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

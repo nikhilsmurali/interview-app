@@ -5,13 +5,15 @@ class AuthTextField extends StatelessWidget {
   final IconData icon;
   final bool obscureText;
   final TextInputType keyboardType;
+  final TextEditingController? controller;
 
-  AuthTextField({
+  const AuthTextField({
     super.key,
     required this.hintText,
     required this.icon,
     this.obscureText = false,
     this.keyboardType = TextInputType.text,
+    this.controller,
   });
 
   @override
@@ -22,6 +24,7 @@ class AuthTextField extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
       ),
       child: TextField(
+        controller: controller,
         obscureText: obscureText,
         keyboardType: keyboardType,
         style: const TextStyle(color: Colors.white),
