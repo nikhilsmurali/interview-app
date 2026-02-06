@@ -1,7 +1,7 @@
 import 'package:ai_interviewer/features/auth/services/auth_service.dart';
 import 'package:ai_interviewer/features/home/screens/profile_tab.dart';
 import 'package:ai_interviewer/features/home/widgets/ai_avatar.dart';
-import 'package:ai_interviewer/features/home/widgets/process_timeline.dart';
+import 'package:ai_interviewer/features/home/widgets/how_it_works_carousel.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -58,14 +58,12 @@ class HomeDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = Provider.of<AuthService>(context).user;
-    
     return SingleChildScrollView(
       child: Column(
         children: [
-          // Header
+          // 1. Top Header
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -73,9 +71,9 @@ class HomeDashboard extends StatelessWidget {
                   'Prepify',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
                   ),
                 ),
                 IconButton(
@@ -88,35 +86,22 @@ class HomeDashboard extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 20),
-
-          // Hero: AI Avatar
-          const AiAvatar(),
-          
           const SizedBox(height: 32),
-          
-          Text(
-            'Hello, ${user?.displayName?.split(' ')[0] ?? 'Candidate'}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.w300,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Ready for your interview?',
-            style: TextStyle(
-              color: Colors.white54,
-              fontSize: 14,
-            ),
+
+          // 2. Middle Portion (Avatar + Guide)
+          Column(
+            children: [
+              // Avatar Video Loop
+              const AiAvatar(),
+              
+              const SizedBox(height: 48),
+
+              // Basic Guide / Timeline
+              // How It Works Carousel
+              const HowItWorksCarousel(),
+            ],
           ),
 
-          const SizedBox(height: 48),
-
-          // Vertical Timeline
-          const ProcessTimeline(),
-          
           const SizedBox(height: 40),
         ],
       ),

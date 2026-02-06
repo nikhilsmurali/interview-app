@@ -4,12 +4,12 @@ import 'package:flutter_animate/flutter_animate.dart';
 class ProcessTimeline extends StatelessWidget {
   const ProcessTimeline({super.key});
 
-  final List<Map<String, dynamic>> steps = const [
-    {'title': 'Application', 'isCompleted': true, 'isActive': false},
-    {'title': 'Written Test', 'isCompleted': true, 'isActive': false},
-    {'title': 'AI Interview', 'isCompleted': false, 'isActive': true},
-    {'title': 'Evaluation', 'isCompleted': false, 'isActive': false},
-    {'title': 'Shortlisting', 'isCompleted': false, 'isActive': false},
+  final List<Map<String, String>> steps = const [
+    {'title': 'Enter interview details', 'subtitle': 'Specify role and topics'},
+    {'title': 'Start interview', 'subtitle': 'AI-driven rapid fire questions'},
+    {'title': 'Get feedback and report', 'subtitle': 'Detailed performance analysis'},
+    {'title': 'Interacting with community', 'subtitle': 'Share and learn from others'},
+    {'title': 'Promotion of consistency', 'subtitle': 'Track your daily progress'},
   ];
 
   @override
@@ -20,7 +20,7 @@ class ProcessTimeline extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Timeline',
+            'How it Works',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -46,29 +46,21 @@ class ProcessTimeline extends StatelessWidget {
                         height: 12,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: step['isActive']
-                              ? const Color(0xFF6366F1)
-                              : step['isCompleted']
-                                  ? Colors.greenAccent
-                                  : Colors.white24,
-                          boxShadow: step['isActive']
-                              ? [
-                                  BoxShadow(
-                                    color: const Color(0xFF6366F1).withValues(alpha: 0.6),
-                                    blurRadius: 8,
-                                    spreadRadius: 2,
-                                  )
-                                ]
-                              : [],
+                          color: const Color(0xFF6366F1), // Consistent accent color
+                          boxShadow: [
+                            BoxShadow(
+                                color: const Color(0xFF6366F1).withValues(alpha: 0.6),
+                                blurRadius: 4,
+                                spreadRadius: 1,
+                              )
+                          ],
                         ),
                       ),
                       if (!isLast)
                         Container(
                           width: 2,
-                          height: 40,
-                          color: step['isCompleted']
-                               ? Colors.white24
-                               : Colors.white10,
+                          height: 50, // Slightly taller for subtitle space
+                          color: Colors.white10,
                         ),
                     ],
                   ),
@@ -80,29 +72,22 @@ class ProcessTimeline extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          step['title'],
-                          style: TextStyle(
-                            color: step['isActive'] || step['isCompleted']
-                                ? Colors.white
-                                : Colors.white54,
-                            fontWeight: step['isActive']
-                                ? FontWeight.bold
-                                : FontWeight.normal,
+                          step['title']!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
                             fontSize: 16,
                           ),
                         ),
-                        if (step['isActive'])
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4.0),
-                            child: Text(
-                              'In Progress',
-                              style: TextStyle(
-                                color: const Color(0xFF6366F1).withValues(alpha: 0.8),
-                                fontSize: 12,
-                              ),
-                            ),
+                        const SizedBox(height: 4),
+                        Text(
+                          step['subtitle']!,
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 13,
                           ),
-                         const SizedBox(height: 32), // Spacing for next item
+                        ),
+                         const SizedBox(height: 24), // Spacing for next item
                       ],
                     ),
                   ),

@@ -17,6 +17,22 @@ class AppTheme {
     useMaterial3: true,
   );
 
+  static final lightTheme = ThemeData(
+    brightness: Brightness.light,
+    scaffoldBackgroundColor: const Color(0xFFF8FAFC), // Slate 50
+    primaryColor: const Color(0xFF6366F1),
+    colorScheme: const ColorScheme.light(
+      primary: Color(0xFF6366F1),
+      secondary: Color(0xFFEC4899),
+      surface: Colors.white,
+      onSurface: Color(0xFF1E293B), // Slate 800
+    ),
+    textTheme: GoogleFonts.interTextTheme(
+      ThemeData.light().textTheme,
+    ),
+    useMaterial3: true,
+  );
+
   static const LinearGradient primaryGradient = LinearGradient(
     colors: [Color(0xFF6366F1), Color(0xFFEC4899)],
     begin: Alignment.topLeft,

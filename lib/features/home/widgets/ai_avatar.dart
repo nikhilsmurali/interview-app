@@ -1,8 +1,38 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:video_player/video_player.dart';
 
-class AiAvatar extends StatelessWidget {
+class AiAvatar extends StatefulWidget {
   const AiAvatar({super.key});
+
+  @override
+  State<AiAvatar> createState() => _AiAvatarState();
+}
+
+class _AiAvatarState extends State<AiAvatar> {
+  late VideoPlayerController _controller;
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.asset('assets/videos/avatar_video.mp4')
+      ..initialize().then((_) {
+        setState(() {
+          _initialized = true;
+        });
+        _controller.setLooping(true);
+        _controller.setVolume(0.0); // Mute the video
+        _controller.play();
+      }).catchError((error) {
+        debugPrint("Error initializing video player: $error");
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,65 +42,50 @@ class AiAvatar extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Outer Glow
+          // Outer Glow/Border
+          Container(
+             width: 190,
+             height: 190,
+             decoration: BoxDecoration(
+               shape: BoxShape.circle,
+               border: Border.all(
+                 color: const Color(0xFF6366F1).withValues(alpha: 0.5),
+                 width: 2,
+               ),
+               boxShadow: [
+                 BoxShadow(
+                   color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                   blurRadius: 20,
+                   spreadRadius: 2,
+                 ),
+               ],
+             ),
+          ),
+
+          // Video Circle
           Container(
             width: 180,
             height: 180,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF6366F1).withValues(alpha: 0.3),
-                  blurRadius: 40,
-                  spreadRadius: 10,
-                ),
-              ],
+              color: Colors.black, // Background while loading
             ),
-          ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-           .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 2.seconds),
-
-          // Core Sphere
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                colors: [Color(0xFF818CF8), Color(0xFF4338CA)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 15,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
+            clipBehavior: Clip.hardEdge,
+            child: _initialized
+                ? FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: _controller.value.size.width,
+                      height: _controller.value.size.height,
+                      child: VideoPlayer(_controller),
+                    ),
+                  )
+                : const Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF6366F1),
+                    ),
+                  ),
           ),
-
-          // Inner Rings (Orbiting)
-           Container(
-            width: 160,
-            height: 160,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.1),
-                width: 1,
-              ),
-            ),
-          ).animate(onPlay: (controller) => controller.repeat())
-           .rotate(duration: 10.seconds),
-
-          // Inner Tech details
-          const Icon(
-            Icons.mic_none_rounded, // Represents listening/AI
-            color: Colors.white,
-            size: 50,
-          ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-           .fade(begin: 0.5, end: 1.0, duration: 1.5.seconds),
         ],
       ),
     );

@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ai_interviewer/features/home/models/candidate_profile.dart';
+import 'package:ai_interviewer/features/home/models/interview_session.dart';
+
 import 'package:flutter/foundation.dart';
 
 class FirestoreService {
@@ -26,4 +28,35 @@ class FirestoreService {
       return null;
     }
   }
+
+  Future<void> startNewInterview(InterviewSession session) async {
+    try {
+      await _db
+          .collection('users')
+          .doc(session.userId)
+          .collection('interviews')
+          .doc(session.id)
+          .set(session.toMap());
+      debugPrint("Interview started! Stored in: users/${session.userId}/interviews/${session.id}");
+      debugPrint("Data: ${session.toMap()}");
+    } catch (e) {
+      debugPrint("Error starting interview: $e");
+      rethrow;
+    }
+  }
+
+  Future<void> updateInterviewQuestions(String userId, String interviewId, List<String> questions) async {
+    try {
+      await _db
+          .collection('users')
+          .doc(userId)
+          .collection('interviews')
+          .doc(interviewId)
+          .update({'questions': questions});
+    } catch (e) {
+      debugPrint("Error updating questions: $e");
+      rethrow;
+    }
+  }
 }
+
