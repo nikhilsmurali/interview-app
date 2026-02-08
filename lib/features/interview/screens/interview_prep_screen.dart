@@ -125,8 +125,10 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => InterviewActiveScreen(
+          interviewId: widget.interviewId,
           companyName: widget.companyName,
           role: widget.role,
+          questions: _questions,
           camera: _cameras!.firstWhere(
             (c) => c.lensDirection == CameraLensDirection.front,
             orElse: () => _cameras!.first,
@@ -185,7 +187,19 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
                 ),
                 clipBehavior: Clip.hardEdge,
                 child: _isCameraReady && _cameraController != null
-                    ? CameraPreview(_cameraController!)
+                    ? LayoutBuilder(
+                        builder: (context, constraints) {
+                          return OverflowBox(
+                            maxWidth: double.infinity,
+                            maxHeight: double.infinity,
+                            child: SizedBox(
+                              width: constraints.maxWidth,
+                              height: constraints.maxWidth * _cameraController!.value.aspectRatio,
+                              child: CameraPreview(_cameraController!),
+                            ),
+                          );
+                        },
+                      )
                     : const Center(
                         child: Icon(Icons.camera_alt, color: Colors.white24, size: 50),
                       ),

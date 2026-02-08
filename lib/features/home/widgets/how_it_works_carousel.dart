@@ -150,16 +150,22 @@ class _HowItWorksCarouselState extends State<HowItWorksCarousel> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              step['description'],
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 13,
-                height: 1.4,
+            Expanded( // Added Expanded to allow text to take available space
+              child: Center( // Center vertically
+                child: SingleChildScrollView( // Allow scrolling if text is too long
+                  child: Text(
+                    step['description'],
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                    // maxLines: 3, // Removed maxLines to allow scrolling if needed
+                    // overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

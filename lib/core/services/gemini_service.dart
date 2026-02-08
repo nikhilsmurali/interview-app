@@ -51,4 +51,38 @@ Return only a numbered list of questions. No explanations.''';
       ];
     }
   }
+
+  Future<Map<String, dynamic>> evaluateAnswer(String question, String answer, String role) async {
+    final prompt = '''
+Role: $role
+Question: $question
+Candidate Answer: $answer
+
+Task: Evaluate the candidate's answer.
+Output JSON only:
+{
+  "feedback": "Short constructive feedback (max 2 sentences).",
+  "rating": 1-10,
+  "followUp": "A follow-up question if needed, else null"
+}
+''';
+
+    try {
+      final content = [Content.text(prompt)];
+      final response = await _model.generateContent(content);
+      
+      if (response.text == null) return {};
+
+      // Basic cleaning to ensure JSON
+      String jsonString = response.text!.replaceAll('```json', '').replaceAll('```', '').trim();
+      
+      return {
+        "feedback": jsonString, 
+      };
+    } catch (e) {
+      return {
+        "feedback": "Could not evaluate answer.",
+      };
+    }
+  }
 }

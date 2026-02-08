@@ -58,5 +58,18 @@ class FirestoreService {
       rethrow;
     }
   }
+  Future<void> updateInterviewExchanges(String userId, String interviewId, List<Map<String, dynamic>> exchanges) async {
+    try {
+      await _db
+          .collection('users')
+          .doc(userId)
+          .collection('interviews')
+          .doc(interviewId)
+          .update({'exchanges': exchanges});
+    } catch (e) {
+      debugPrint("Error updating exchanges: $e");
+      rethrow;
+    }
+  }
 }
 

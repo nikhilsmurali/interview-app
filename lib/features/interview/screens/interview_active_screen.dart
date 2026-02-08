@@ -1,18 +1,30 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:ai_interviewer/core/services/firestore_service.dart';
+import 'package:ai_interviewer/core/services/gemini_service.dart';
+import 'package:ai_interviewer/features/auth/services/auth_service.dart';
+import 'package:ai_interviewer/features/interview/models/interview_exchange.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:provider/provider.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:video_player/video_player.dart';
 
 class InterviewActiveScreen extends StatefulWidget {
+  final String interviewId;
   final String companyName;
   final String role;
   final CameraDescription camera;
+  final List<String> questions;
 
   const InterviewActiveScreen({
     super.key,
+    required this.interviewId,
     required this.companyName,
     required this.role,
     required this.camera,
+    required this.questions,
   });
 
   @override
@@ -20,16 +32,27 @@ class InterviewActiveScreen extends StatefulWidget {
 }
 
 class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
-  // Camera
+  // Camera & Video
   late CameraController _cameraController;
   late Future<void> _initializeControllerFuture;
-  bool _isCameraOff = false;
-  bool _isMicMuted = false;
-
-  // Avatar Video
   late VideoPlayerController _avatarController;
   bool _isAvatarInitialized = false;
+  bool _isCameraOff = false;
 
+  // Services
+  final FlutterTts _flutterTts = FlutterTts();
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  final GeminiService _geminiService = GeminiService();
+
+  // State
+  int _currentQuestionIndex = 0;
+  List<InterviewExchange> _exchanges = [];
+  bool _isSpeaking = false;
+  bool _isListening = false;
+  bool _isProcessing = false;
+  String _currentAnswer = '';
+  String _statusText = 'Initializing...';
+  
   // Timer
   Timer? _timer;
   int _secondsElapsed = 0;
@@ -40,37 +63,32 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     _initCamera();
     _initAvatar();
     _startTimer();
+    _initSpeechAndTTS();
   }
 
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _secondsElapsed++;
-        });
-      }
-    });
-  }
+  Future<void> _initSpeechAndTTS() async {
+    await _flutterTts.setLanguage("en-US");
+    await _flutterTts.setSpeechRate(0.5);
+    await _flutterTts.setPitch(1.0);
 
-  String _formatTime(int seconds) {
-    final int minutes = seconds ~/ 60;
-    final int remainingSeconds = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
-  }
+    bool available = await _speech.initialize(
+      onStatus: (status) => debugPrint('STT Status: $status'),
+      onError: (error) => debugPrint('STT Error: $error'),
+    );
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _cameraController.dispose();
-    _avatarController.dispose();
-    super.dispose();
+    if (available && mounted) {
+      // Start the interview after a short delay
+      Future.delayed(const Duration(seconds: 1), _askNextQuestion);
+    } else {
+      setState(() => _statusText = "Speech recognition unavailable");
+    }
   }
 
   void _initCamera() {
     _cameraController = CameraController(
       widget.camera,
       ResolutionPreset.medium,
-      enableAudio: true,
+      enableAudio: false, // We use speech_to_text for audio
     );
     _initializeControllerFuture = _cameraController.initialize();
   }
@@ -80,19 +98,188 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       ..initialize().then((_) {
         setState(() => _isAvatarInitialized = true);
         _avatarController.setLooping(true);
-        // User requested "keep it as a paused state"
-        _avatarController.pause(); 
+        _avatarController.pause();
       });
   }
 
-  Future<void> _toggleMic() async {
-    if (_isMicMuted) {
-      // Unmuting not directly supported by CameraController without re-init often, 
-      // but strictly speaking we just want the state visual here or stopping stream if possible.
-      // For now, we'll just toggle the UI state as real mute usually involves stopping audio stream processing.
-      // Since specific candidate audio streaming isn't fully implemented (just preview), UI toggle is sufficient.
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) setState(() => _secondsElapsed++);
+    });
+  }
+
+  String _formatTime(int seconds) {
+    final int minutes = seconds ~/ 60;
+    final int remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _askNextQuestion() async {
+    if (_currentQuestionIndex >= widget.questions.length) {
+      _endInterview();
+      return;
     }
-    setState(() => _isMicMuted = !_isMicMuted);
+
+    final question = widget.questions[_currentQuestionIndex];
+    setState(() {
+      _statusText = "Interviewer is speaking...";
+      _isSpeaking = true;
+      _avatarController.play(); // Animate avatar
+    });
+
+    await _flutterTts.speak(question);
+    await _flutterTts.awaitSpeakCompletion(true);
+
+    if (mounted) {
+      setState(() {
+        _isSpeaking = false;
+        _avatarController.pause();
+        _statusText = "Preparing to listen...";
+      });
+      // Short delay to ensure TTS audio focus is released
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      setState(() {
+         _statusText = "Listening...";
+         _isListening = true;
+      });
+      _startListening();
+    }
+  }
+
+  void _startListening() async {
+    // Double check permissions (paranoid check)
+    // var status = await Permission.microphone.status;
+    // if (!status.isGranted) { ... } 
+    
+    await _speech.listen(
+      onResult: (result) {
+        setState(() {
+          _currentAnswer = result.recognizedWords;
+          if (result.finalResult) {
+             // Optional: Auto-submit on final result? 
+             // For now let's keep it manual or timeout based
+          }
+        });
+      },
+      localeId: "en_US",
+      listenFor: const Duration(seconds: 60),
+      pauseFor: const Duration(seconds: 5),
+      partialResults: true,
+      onSoundLevelChange: (level) {
+         // Visualization hook
+      },
+      cancelOnError: true,
+      listenMode: stt.ListenMode.dictation,
+    );
+  }
+
+  Future<void> _stopListeningAndProcess() async {
+    await _speech.stop();
+    setState(() {
+      _isListening = false;
+      _isProcessing = true;
+      _statusText = "Analyzing answer...";
+    });
+
+    if (_currentAnswer.trim().isEmpty) {
+      _currentAnswer = "No answer provided.";
+    }
+
+    // 1. Evaluate with Gemini
+    final currentQuestion = widget.questions[_currentQuestionIndex];
+    final evaluation = await _geminiService.evaluateAnswer(
+      currentQuestion,
+      _currentAnswer,
+      widget.role,
+    );
+
+    String feedback = "Thank you.";
+    try {
+        final Map<String, dynamic> jsonFeedback = jsonDecode(evaluation['feedback'] ?? '{}');
+        feedback = jsonFeedback['feedback'] ?? "Thank you.";
+    } catch(e) {
+        feedback = evaluation['feedback'] ?? "Thank you.";
+    }
+    
+    // Store Exchange
+    final exchange = InterviewExchange(
+      question: currentQuestion,
+      answer: _currentAnswer,
+      feedback: feedback,
+      timestamp: DateTime.now(),
+    );
+    _exchanges.add(exchange);
+
+    // Save progress to Firestore (incremental save)
+    final user = Provider.of<AuthService>(context, listen: false).user;
+    if (user != null) {
+        // Ideally we append to the array, but for now let's just update the interview doc
+        // Actually, 'updateInterviewQuestions' was for storing questions. 
+        // We might need a new method 'saveInterviewExchange' in FirestoreService, but for MVP 
+        // skipping incremental cloud save to keep it simple, will save all at end.
+    }
+
+    // Speak Feedback? 
+    // Usually in an interview, feedback isn't given immediately unless it's a mock.
+    // Let's have the AI say something brief or just move on. 
+    // For this app, maybe just "Okay, moving on." or a short comment if generated.
+    
+    // Move to next
+    setState(() {
+      _isProcessing = false;
+      _currentAnswer = '';
+      _currentQuestionIndex++;
+    });
+
+    _askNextQuestion();
+  }
+  
+  Future<void> _endInterview() async {
+    _timer?.cancel();
+    setState(() => _statusText = "Interview Complete");
+    
+    // Save full session
+    final user = Provider.of<AuthService>(context, listen: false).user;
+    if (user != null) {
+       try {
+         await FirestoreService().updateInterviewExchanges(
+           user.uid,
+           widget.interviewId,
+           _exchanges.map((e) => e.toMap()).toList(),
+         );
+         debugPrint("Interview saved successfully!");
+       } catch (e) {
+         debugPrint("Error saving interview: $e");
+         if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Failed to save interview results")),
+            );
+         }
+       }
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('Interview Completed', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Great job! Your responses have been recorded.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              Navigator.pop(context); // Go back to home
+            },
+            child: const Text('Return Home', style: TextStyle(color: Color(0xFF6366F1))),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _toggleCamera() async {
@@ -104,34 +291,16 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     setState(() => _isCameraOff = !_isCameraOff);
   }
 
-  Future<void> _onExitPressed() async {
-    final shouldExit = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text('End Interview?', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Are you sure you want to end this interview session?',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('End Interview', style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldExit == true && mounted) {
-      Navigator.of(context).pop(); // Return to home/prep
-    }
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _cameraController.dispose();
+    _avatarController.dispose();
+    _flutterTts.stop();
+    _speech.cancel();
+    super.dispose();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -139,31 +308,38 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // TOP HALF: Avatar (Paused)
+            // TOP HALF: Avatar (AI)
             Expanded(
-              flex: 1,
-              child: Container(
-                color: Colors.black,
-                width: double.infinity,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    if (_isAvatarInitialized)
+              flex: 4,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                   Container(color: Colors.black),
+                   if (_isAvatarInitialized)
                       AspectRatio(
                         aspectRatio: _avatarController.value.aspectRatio,
                         child: VideoPlayer(_avatarController),
-                      )
-                    else
-                      const Center(child: CircularProgressIndicator()),
-                      
-                    // Paused Text
-                    const Positioned(
-                      bottom: 16,
-                      child: Text("AI Interviewer (Paused)", style: TextStyle(color: Colors.white54)),
-                    ),
+                      ),
+                   
+                   // Status Overlay
+                   Positioned(
+                     top: 16,
+                     left: 16,
+                     child: Container(
+                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                       decoration: BoxDecoration(
+                         color: Colors.black54,
+                         borderRadius: BorderRadius.circular(20),
+                       ),
+                       child: Text(
+                         _statusText,
+                         style: const TextStyle(color: Colors.white, fontSize: 12),
+                       ),
+                     ),
+                   ),
 
-                    // TIMER OVERLAY (Top Right)
-                    Positioned(
+                   // Timer
+                   Positioned(
                       top: 16,
                       right: 16,
                       child: Container(
@@ -189,51 +365,70 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
                         ),
                       ),
                     ),
-                  ],
-                ),
+                ],
               ),
             ),
-// ... rest of the build method (bottom half, footer, etc.)
 
-            // SEPARATOR
-            const Divider(height: 1, color: Colors.white24),
+            // MIDDLE: Transcript / Question
+            Container(
+              height: 120,
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              color: const Color(0xFF0F172A),
+              child: Column(
+                children: [
+                   Text(
+                     _currentQuestionIndex < widget.questions.length 
+                        ? widget.questions[_currentQuestionIndex]
+                        : "Wrapping up...",
+                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                     textAlign: TextAlign.center,
+                     maxLines: 2,
+                     overflow: TextOverflow.ellipsis,
+                   ),
+                   const Spacer(),
+                   Text(
+                     _currentAnswer.isEmpty ? "..." : _currentAnswer,
+                     style: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic),
+                     textAlign: TextAlign.center,
+                     maxLines: 2,
+                     overflow: TextOverflow.ellipsis,
+                   ),
+                ],
+              ),
+            ),
 
             // BOTTOM HALF: Candidate Camera
             Expanded(
-              flex: 1,
+              flex: 3,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   FutureBuilder<void>(
                     future: _initializeControllerFuture,
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.done) {
-                        if (_isCameraOff) {
-                          return const Center(
-                            child: Icon(Icons.videocam_off, color: Colors.white24, size: 64),
-                          );
-                        }
-                        return CameraPreview(_cameraController);
+                      if (snapshot.connectionState == ConnectionState.done && !_isCameraOff) {
+                        return LayoutBuilder(
+                          builder: (context, constraints) {
+                            final scale = 1 / (_cameraController.value.aspectRatio * constraints.maxHeight / constraints.maxWidth);
+                            return ClipRect(
+                              child: Transform.scale(
+                                scale: scale,
+                                child: Center(
+                                  child: CameraPreview(_cameraController),
+                                ),
+                              ),
+                            );
+                          },
+                        );
                       } else {
-                        return const Center(child: CircularProgressIndicator());
+                        return Container(
+                            color: Colors.black, 
+                            child: const Center(child: Icon(Icons.videocam_off, color: Colors.white24))
+                        );
                       }
                     },
                   ),
-                  
-                  // Muted Indicator Overlay
-                  if (_isMicMuted)
-                    Positioned(
-                      top: 16,
-                      right: 16,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.8),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.mic_off, color: Colors.white, size: 20),
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -245,29 +440,34 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // Mic Toggle
-                  _buildControlBtn(
-                    icon: _isMicMuted ? Icons.mic_off : Icons.mic,
-                    color: _isMicMuted ? Colors.redAccent : Colors.white,
-                    onTap: _toggleMic,
-                    label: _isMicMuted ? 'Unmute' : 'Mute',
-                  ),
+                  // Submit Answer / Stop Listening
+                  if (_isListening)
+                    ElevatedButton.icon(
+                      onPressed: _stopListeningAndProcess,
+                      icon: const Icon(Icons.check),
+                      label: const Text("Done Speaking"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        foregroundColor: Colors.white,
+                      ),
+                    )
+                  else if (_isProcessing)
+                     const CircularProgressIndicator(color: Colors.white)
+                  else
+                     const SizedBox(height: 48), // Spacer to keep height
 
                   // Camera Toggle
-                  _buildControlBtn(
-                    icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
-                    color: _isCameraOff ? Colors.redAccent : Colors.white,
-                    onTap: _toggleCamera,
-                    label: _isCameraOff ? 'Start Video' : 'Stop Video',
+                  IconButton(
+                    onPressed: _toggleCamera,
+                    icon: Icon(_isCameraOff ? Icons.videocam_off : Icons.videocam),
+                    color: Colors.white,
                   ),
 
                   // Exit
-                  _buildControlBtn(
-                    icon: Icons.call_end,
+                  IconButton(
+                    onPressed: () => Navigator.pop(context), 
+                    icon: const Icon(Icons.close),
                     color: Colors.red,
-                    bgColor: Colors.red.withValues(alpha: 0.2),
-                    onTap: _onExitPressed,
-                    label: 'End',
                   ),
                 ],
               ),
@@ -275,37 +475,6 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildControlBtn({
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-    required String label,
-    Color? bgColor,
-  }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(30),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: bgColor ?? Colors.white.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 28),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-        ),
-      ],
     );
   }
 }

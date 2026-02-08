@@ -1,3 +1,5 @@
+import 'package:ai_interviewer/features/interview/models/interview_exchange.dart';
+
 class InterviewSession {
   final String id;
   final String userId;
@@ -7,6 +9,7 @@ class InterviewSession {
   final DateTime createdAt;
   final String status;
   final List<String> questions;
+  final List<InterviewExchange> exchanges;
 
   InterviewSession({
     required this.id,
@@ -17,6 +20,7 @@ class InterviewSession {
     required this.createdAt,
     required this.status,
     this.questions = const [],
+    this.exchanges = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -29,6 +33,7 @@ class InterviewSession {
       'createdAt': createdAt.toIso8601String(),
       'status': status,
       'questions': questions,
+      'exchanges': exchanges.map((e) => e.toMap()).toList(),
     };
   }
 
@@ -42,6 +47,10 @@ class InterviewSession {
       createdAt: DateTime.parse(map['createdAt']),
       status: map['status'] ?? 'initiated',
       questions: List<String>.from(map['questions'] ?? []),
+      exchanges: (map['exchanges'] as List<dynamic>?)
+              ?.map((e) => InterviewExchange.fromMap(e))
+              .toList() ??
+          [],
     );
   }
 }
