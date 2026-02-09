@@ -5,6 +5,8 @@ import 'package:ai_interviewer/features/home/widgets/how_it_works_carousel.dart'
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:ai_interviewer/features/home/screens/community_screen.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -17,7 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _tabs = [
     const HomeDashboard(),
-    const Center(child: Text('Community Coming Soon', style: TextStyle(color: Colors.white))),
+    const CommunityScreen(),
     const ProfileTab(),
   ];
 

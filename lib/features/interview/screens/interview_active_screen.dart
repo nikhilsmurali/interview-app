@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:ai_interviewer/core/services/firestore_service.dart';
 import 'package:ai_interviewer/core/services/gemini_service.dart';
+import 'package:ai_interviewer/core/services/eleven_labs_service.dart'; // Import service
 import 'package:ai_interviewer/features/auth/services/auth_service.dart';
 import 'package:ai_interviewer/features/interview/models/interview_exchange.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_tts/flutter_tts.dart';
+
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:video_player/video_player.dart';
@@ -40,7 +41,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   bool _isCameraOff = false;
 
   // Services
-  final FlutterTts _flutterTts = FlutterTts();
+  final ElevenLabsService _elevenLabsService = ElevenLabsService();
   final stt.SpeechToText _speech = stt.SpeechToText();
   final GeminiService _geminiService = GeminiService();
 
@@ -67,9 +68,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   }
 
   Future<void> _initSpeechAndTTS() async {
-    await _flutterTts.setLanguage("en-US");
-    await _flutterTts.setSpeechRate(0.5);
-    await _flutterTts.setPitch(1.0);
+    // ElevenLabs service doesn't need explicit init for now
 
     bool available = await _speech.initialize(
       onStatus: (status) => debugPrint('STT Status: $status'),
@@ -127,8 +126,11 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       _avatarController.play(); // Animate avatar
     });
 
-    await _flutterTts.speak(question);
-    await _flutterTts.awaitSpeakCompletion(true);
+    try {
+      await _elevenLabsService.speak(question);
+    } catch (e) {
+      debugPrint("Error speaking: $e");
+    }
 
     if (mounted) {
       setState(() {
@@ -296,7 +298,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     _timer?.cancel();
     _cameraController.dispose();
     _avatarController.dispose();
-    _flutterTts.stop();
+    _elevenLabsService.dispose();
     _speech.cancel();
     super.dispose();
   }
