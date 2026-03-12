@@ -71,5 +71,25 @@ class FirestoreService {
       rethrow;
     }
   }
+
+
+
+  Future<List<InterviewSession>> getInterviewHistory(String userId) async {
+    try {
+      final snapshot = await _db
+          .collection('users')
+          .doc(userId)
+          .collection('interviews')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      return snapshot.docs
+          .map((doc) => InterviewSession.fromMap(doc.data()))
+          .toList();
+    } catch (e) {
+      debugPrint("Error fetching interview history: $e");
+      return [];
+    }
+  }
 }
 

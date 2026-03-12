@@ -2,6 +2,7 @@ import 'package:ai_interviewer/core/services/theme_provider.dart';
 import 'package:ai_interviewer/features/auth/services/auth_service.dart';
 import 'package:ai_interviewer/features/home/screens/start_interview_screen.dart';
 import 'package:ai_interviewer/features/home/widgets/consistency_heatmap.dart';
+import 'package:ai_interviewer/features/home/screens/reports_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -101,7 +102,10 @@ class _ProfileTabState extends State<ProfileTab> {
             textColor: textColor,
             iconColor: textColor,
             onTap: () {
-              // TODO: Navigate to reports
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ReportsListScreen()),
+              );
             },
           ),
 

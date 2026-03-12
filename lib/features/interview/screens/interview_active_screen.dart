@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:ai_interviewer/core/services/firestore_service.dart';
-import 'package:ai_interviewer/core/services/gemini_service.dart';
-import 'package:ai_interviewer/core/services/eleven_labs_service.dart'; // Import service
+import 'package:ai_interviewer/core/services/openai_service.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:ai_interviewer/features/auth/services/auth_service.dart';
 import 'package:ai_interviewer/features/interview/models/interview_exchange.dart';
 import 'package:camera/camera.dart';
@@ -41,9 +41,9 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   bool _isCameraOff = false;
 
   // Services
-  final ElevenLabsService _elevenLabsService = ElevenLabsService();
+  final FlutterTts _flutterTts = FlutterTts();
   final stt.SpeechToText _speech = stt.SpeechToText();
-  final GeminiService _geminiService = GeminiService();
+  final OpenAIService _openAIService = OpenAIService();
 
   // State
   int _currentQuestionIndex = 0;
@@ -68,7 +68,9 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   }
 
   Future<void> _initSpeechAndTTS() async {
-    // ElevenLabs service doesn't need explicit init for now
+    await _flutterTts.setLanguage("en-US");
+    await _flutterTts.setSpeechRate(0.5);
+    await _flutterTts.setPitch(1.0);
 
     bool available = await _speech.initialize(
       onStatus: (status) => debugPrint('STT Status: $status'),
@@ -126,11 +128,8 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       _avatarController.play(); // Animate avatar
     });
 
-    try {
-      await _elevenLabsService.speak(question);
-    } catch (e) {
-      debugPrint("Error speaking: $e");
-    }
+    await _flutterTts.speak(question);
+    await _flutterTts.awaitSpeakCompletion(true);
 
     if (mounted) {
       setState(() {
@@ -188,21 +187,15 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       _currentAnswer = "No answer provided.";
     }
 
-    // 1. Evaluate with Gemini
+    // 1. Evaluate with OpenAI
     final currentQuestion = widget.questions[_currentQuestionIndex];
-    final evaluation = await _geminiService.evaluateAnswer(
+    final evaluation = await _openAIService.evaluateAnswer(
       currentQuestion,
       _currentAnswer,
       widget.role,
     );
 
-    String feedback = "Thank you.";
-    try {
-        final Map<String, dynamic> jsonFeedback = jsonDecode(evaluation['feedback'] ?? '{}');
-        feedback = jsonFeedback['feedback'] ?? "Thank you.";
-    } catch(e) {
-        feedback = evaluation['feedback'] ?? "Thank you.";
-    }
+    String feedback = evaluation['feedback'] ?? "Thank you.";
     
     // Store Exchange
     final exchange = InterviewExchange(
@@ -213,19 +206,26 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     );
     _exchanges.add(exchange);
 
-    // Save progress to Firestore (incremental save)
-    final user = Provider.of<AuthService>(context, listen: false).user;
-    if (user != null) {
-        // Ideally we append to the array, but for now let's just update the interview doc
-        // Actually, 'updateInterviewQuestions' was for storing questions. 
-        // We might need a new method 'saveInterviewExchange' in FirestoreService, but for MVP 
-        // skipping incremental cloud save to keep it simple, will save all at end.
+    // Speak Feedback
+    setState(() {
+      _statusText = "Providing feedback...";
+      _isSpeaking = true;
+      _avatarController.play(); 
+    });
+
+    try {
+      await _flutterTts.speak(feedback);
+      await _flutterTts.awaitSpeakCompletion(true);
+    } catch (e) {
+      debugPrint("Error speaking feedback: $e");
     }
 
-    // Speak Feedback? 
-    // Usually in an interview, feedback isn't given immediately unless it's a mock.
-    // Let's have the AI say something brief or just move on. 
-    // For this app, maybe just "Okay, moving on." or a short comment if generated.
+    if (mounted) {
+      setState(() {
+        _isSpeaking = false;
+        _avatarController.pause();
+      });
+    }
     
     // Move to next
     setState(() {
@@ -298,7 +298,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     _timer?.cancel();
     _cameraController.dispose();
     _avatarController.dispose();
-    _elevenLabsService.dispose();
+    _flutterTts.stop();
     _speech.cancel();
     super.dispose();
   }

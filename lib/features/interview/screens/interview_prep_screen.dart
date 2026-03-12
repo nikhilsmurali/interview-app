@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:ai_interviewer/core/services/gemini_service.dart';
+import 'package:ai_interviewer/core/services/openai_service.dart';
 import 'package:ai_interviewer/features/interview/screens/interview_active_screen.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -68,9 +68,9 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
       debugPrint("Error initializing camera: $e");
     }
 
-    // 3. Generate Questions (Gemini)
+    // 3. Generate Questions (OpenAI)
     try {
-      final service = GeminiService();
+      final service = OpenAIService();
       _questions = await service.generateInterviewQuestions(
         widget.companyName,
         widget.role,

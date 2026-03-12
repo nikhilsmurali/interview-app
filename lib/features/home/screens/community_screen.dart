@@ -1,6 +1,9 @@
+
+import 'package:ai_interviewer/features/auth/services/auth_service.dart';
 import 'package:ai_interviewer/features/home/models/community_model.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class CommunityScreen extends StatefulWidget {
@@ -12,7 +15,7 @@ class CommunityScreen extends StatefulWidget {
 
 class _CommunityScreenState extends State<CommunityScreen> {
   final TextEditingController _searchController = TextEditingController();
-  String _selectedTab = 'Trending'; // 'Trending', 'People'
+
   
   // Mock Data
   final List<Community> _allCommunities = [
@@ -22,10 +25,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       description: 'A place for all things Flutter. Share your apps, ask questions, and grow together!',
       tags: ['#flutter', '#dart', '#mobile'],
       memberCount: 1250,
-      members: [
-        Member(id: 'm1', name: 'Alice', avatarUrl: '', gitUrl: 'https://github.com/alice', linkedInUrl: 'https://linkedin.com/in/alice', role: 'Admin'),
-        Member(id: 'm2', name: 'Bob', avatarUrl: '', gitUrl: 'https://github.com/bob'),
-      ],
+      members: [],
     ),
     Community(
       id: '2',
@@ -33,9 +33,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       description: 'Discussing the latest in LLMs, GenAI, and machine learning.',
       tags: ['#ai', '#ml', '#genai'],
       memberCount: 890,
-      members: [
-        Member(id: 'm3', name: 'Charlie', avatarUrl: '', linkedInUrl: 'https://linkedin.com/in/charlie'),
-      ],
+      members: [],
     ),
     Community(
       id: '3',
@@ -75,8 +73,24 @@ class _CommunityScreenState extends State<CommunityScreen> {
   void _joinCommunity(Community community) {
     setState(() {
       community.isJoined = !community.isJoined;
+      
+      final user = Provider.of<AuthService>(context, listen: false).user;
+      if (user != null) {
+        if (community.isJoined) {
+          // Add current user to members
+          community.members.add(Member(
+            id: user.uid,
+            name: user.displayName ?? 'User',
+            avatarUrl: user.photoURL ?? '',
+            role: 'Member',
+          ));
+        } else {
+          // Remove current user from members
+          community.members.removeWhere((m) => m.id == user.uid);
+        }
+      }
     });
-    // In a real app, this would update backend
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(community.isJoined ? 'Joined ${community.name}' : 'Left ${community.name}')),
     );
@@ -138,11 +152,86 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
+  void _showCreateCommunityDialog() {
+    final nameController = TextEditingController();
+    final descController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('Create Community', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Community Name',
+                labelStyle: TextStyle(color: Colors.white70),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descController,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Description',
+                labelStyle: TextStyle(color: Colors.white70),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
+            onPressed: () {
+              if (nameController.text.isNotEmpty) {
+                setState(() {
+                  final newCommunity = Community(
+                    id: DateTime.now().toString(),
+                    name: nameController.text,
+                    description: descController.text,
+                    tags: ['#new'],
+                    memberCount: 1,
+                    members: [],
+                    isJoined: true,
+                  );
+                  _allCommunities.add(newCommunity);
+                  _onSearchChanged(); // Refresh list
+                });
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Community Created!')),
+                );
+              }
+            },
+            child: const Text('Create', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.black, // Dark background
-      child: Column(
+    return Scaffold(
+      backgroundColor: Colors.black,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showCreateCommunityDialog,
+        backgroundColor: Colors.white,
+        icon: const Icon(Icons.add, color: Color(0xFF6366F1)),
+        label: const Text("Create Community", style: TextStyle(color: Color(0xFF6366F1))),
+      ),
+      body: Column(
         children: [
           // 1. Search & Header
           Padding(
@@ -165,45 +254,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             ),
           ),
 
-          // 2. Tabs (Trending vs People)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: Row(
-                children: [
-                  _buildTab('Trending', true),
-                  _buildTab('People', false),
-                ],
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-
-          // 3. Trending Tags
-          if (_selectedTab == 'Trending')
-            SizedBox(
-              height: 40,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _buildTag('#cryptogrowth'),
-                  _buildTag('#HODL'),
-                  _buildTag('#flutter'),
-                  _buildTag('#AI'),
-                  _buildTag('#jobsearch'),
-                ],
-              ),
-            ),
-
-          const SizedBox(height: 16),
-
-          // 4. Content List
+          // 2. Content List
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
@@ -219,43 +270,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
-  Widget _buildTab(String title, bool isFirst) {
-    final isSelected = _selectedTab == title;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedTab = title),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF6366F1).withValues(alpha: 0.2) : Colors.transparent,
-            borderRadius: BorderRadius.circular(25),
-          ),
-          child: Text(
-            title,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white54,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildTag(String tag) {
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
-      ),
-      alignment: Alignment.center,
-      child: Text(tag, style: const TextStyle(color: Colors.white70)),
-    );
-  }
 
   Widget _buildCommunityCard(Community community) {
     return Container(
@@ -286,10 +301,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 ),
               ),
               if (community.isJoined)
-                 IconButton(
-                   icon: const Icon(Icons.info_outline, color: Colors.white70),
-                   onPressed: () => _showMembersAPI(community),
-                 ),
+                  IconButton(
+                    icon: const Icon(Icons.people_alt, color: Colors.blueAccent),
+                    onPressed: () => _showMembersAPI(community),
+                  ),
             ],
           ),
           const SizedBox(height: 12),
