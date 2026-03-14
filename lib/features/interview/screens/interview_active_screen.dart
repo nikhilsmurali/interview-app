@@ -11,6 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:video_player/video_player.dart';
+import 'package:ai_interviewer/features/home/screens/interview_report_screen.dart';
+import 'package:ai_interviewer/features/home/models/interview_session.dart';
 
 class InterviewActiveScreen extends StatefulWidget {
   final String interviewId;
@@ -80,7 +82,12 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     await _flutterTts.awaitSpeakCompletion(true);
 
     bool available = await _speech.initialize(
-      onStatus: (status) => debugPrint('STT Status: $status'),
+      onStatus: (status) {
+        debugPrint('STT Status: $status');
+        if (status == 'done' && mounted && _isListening) {
+           // If it stops listening prematurely, we might want to restart or just wait for the user to hit Done
+        }
+      },
       onError: (error) => debugPrint('STT Error: $error'),
     );
 
@@ -160,28 +167,24 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   }
 
   void _startListening() async {
-    // Double check permissions (paranoid check)
-    // var status = await Permission.microphone.status;
-    // if (!status.isGranted) { ... } 
+    // Stop any existing session just in case
+    if (_speech.isListening) {
+      await _speech.stop();
+    }
     
     await _speech.listen(
       onResult: (result) {
-        setState(() {
-          _currentAnswer = result.recognizedWords;
-          if (result.finalResult) {
-             // Optional: Auto-submit on final result? 
-             // For now let's keep it manual or timeout based
-          }
-        });
+        if (mounted) {
+          setState(() {
+            _currentAnswer = result.recognizedWords;
+          });
+        }
       },
       localeId: "en_US",
-      listenFor: const Duration(seconds: 60),
-      pauseFor: const Duration(seconds: 5),
+      listenFor: const Duration(seconds: 120),
+      // No pauseFor allows the user to take a breath without it shutting off
       partialResults: true,
-      onSoundLevelChange: (level) {
-         // Visualization hook
-      },
-      cancelOnError: true,
+      cancelOnError: false, // very important on Android
       listenMode: stt.ListenMode.dictation,
     );
   }
@@ -229,15 +232,30 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     );
 
     String feedback = evaluation['feedback'] ?? "Thank you.";
+    int rating = 5;
+    if (evaluation['rating'] != null) {
+      if (evaluation['rating'] is int) {
+        rating = evaluation['rating'];
+      } else if (evaluation['rating'] is String) {
+        rating = int.tryParse(evaluation['rating']) ?? 5;
+      }
+    }
     
     // Store Exchange
     final exchange = InterviewExchange(
       question: currentQuestion,
       answer: _currentAnswer,
       feedback: feedback,
+      rating: rating,
       timestamp: DateTime.now(),
     );
     _exchanges.add(exchange);
+
+    // Dynamic Follow-up
+    String? followUp = evaluation['followUp'];
+    if (followUp != null && followUp.trim().isNotEmpty && followUp.toLowerCase() != 'null') {
+      widget.questions.insert(_currentQuestionIndex + 1, followUp);
+    }
 
     // Speak Feedback
     setState(() {
@@ -294,27 +312,34 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
        }
     }
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text('Interview Completed', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Great job! Your responses have been recorded.',
-          style: TextStyle(color: Colors.white70),
+    if (mounted) {
+      // Calculate aggregate score out of 10
+      double aggregateScore = 0;
+      if (_exchanges.isNotEmpty) {
+        int totalRating = _exchanges.fold(0, (sum, e) => sum + e.rating);
+        aggregateScore = totalRating / _exchanges.length;
+      }
+
+      final session = InterviewSession(
+        id: widget.interviewId,
+        userId: user?.uid ?? '',
+        targetCompany: widget.companyName,
+        targetRole: widget.role,
+        yearsOfExperience: 0,
+        status: 'completed',
+        createdAt: DateTime.now(),
+        exchanges: _exchanges,
+        overallScore: double.parse(aggregateScore.toStringAsFixed(1)),
+        feedbackSummary: "Interview completed. Score: ${aggregateScore.toStringAsFixed(1)}/10",
+      );
+      
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => InterviewReportScreen(session: session),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Go back to home
-            },
-            child: const Text('Return Home', style: TextStyle(color: Color(0xFF6366F1))),
-          ),
-        ],
-      ),
-    );
+      );
+    }
   }
 
   Future<void> _toggleCamera() async {
@@ -477,14 +502,31 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
                 children: [
                   // Submit Answer / Stop Listening
                   if (_isListening)
-                    ElevatedButton.icon(
-                      onPressed: _stopListeningAndProcess,
-                      icon: const Icon(Icons.check),
-                      label: const Text("Done Speaking"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        foregroundColor: Colors.white,
-                      ),
+                    Row(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () {
+                             // Restart Mic manually if stuck
+                             _startListening();
+                          },
+                          icon: const Icon(Icons.mic),
+                          label: const Text("Reset Mic"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white24,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: _stopListeningAndProcess,
+                          icon: const Icon(Icons.check),
+                          label: const Text("Done Speaking"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
                     )
                   else if (_isProcessing)
                      const CircularProgressIndicator(color: Colors.white)

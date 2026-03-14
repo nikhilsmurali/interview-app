@@ -19,6 +19,7 @@ class StartInterviewScreen extends StatefulWidget {
 class _StartInterviewScreenState extends State<StartInterviewScreen> {
   final TextEditingController _companyController = TextEditingController();
   final TextEditingController _roleController = TextEditingController();
+  final TextEditingController _resumeController = TextEditingController();
   double _yearsOfExperience = 0;
   bool _isLoading = false;
 
@@ -37,6 +38,7 @@ class _StartInterviewScreenState extends State<StartInterviewScreen> {
   void dispose() {
     _companyController.dispose();
     _roleController.dispose();
+    _resumeController.dispose();
     super.dispose();
   }
 
@@ -66,6 +68,7 @@ class _StartInterviewScreenState extends State<StartInterviewScreen> {
         targetRole: _roleController.text,
         yearsOfExperience: _yearsOfExperience,
         createdAt: DateTime.now(),
+        // Just store resume in feedbackSummary temporarily or it doesn't need to be in the session object right now
         status: 'initiated',
       );
 
@@ -83,6 +86,7 @@ class _StartInterviewScreenState extends State<StartInterviewScreen> {
               interviewId: session.id,
               companyName: _companyController.text,
               role: _roleController.text,
+              resumeText: _resumeController.text,
             ),
           ),
         );
@@ -215,6 +219,33 @@ class _StartInterviewScreenState extends State<StartInterviewScreen> {
               activeColor: const Color(0xFF6366F1),
               inactiveColor: Colors.white24,
               onChanged: (val) => setState(() => _yearsOfExperience = val),
+            ),
+            
+            const SizedBox(height: 32),
+            Text(
+              'Resume / CV Text (Optional)',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Paste your resume text to get highly personalized interview questions based on your past projects!',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _resumeController,
+              maxLines: 6,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Paste your resume content here...',
+                hintStyle: const TextStyle(color: Colors.white38),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.05),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
             ),
 
             const SizedBox(height: 48),

@@ -6,8 +6,8 @@ class OpenAIService {
   static const String _apiKey = AppSecrets.groqApiKey;
   static const String _baseUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
-  Future<List<String>> generateInterviewQuestions(String company, String role) async {
-    final prompt = '''You are a strict, senior technical interviewer at $company interviewing a candidate for the $role position.
+  Future<List<String>> generateInterviewQuestions(String company, String role, [String? resume]) async {
+    String basePrompt = '''You are a strict, senior technical interviewer at $company interviewing a candidate for the $role position.
 
 Generate exactly 5 highly specific, challenging interview questions tailored to the $role role.
 
@@ -23,6 +23,16 @@ Output format:
 - No explanations, no markdown blocks, no extra text.
 ''';
 
+    if (resume != null && resume.trim().isNotEmpty) {
+      basePrompt += '''
+
+Additionally, the candidate has provided their resume/CV below. Read their resume and generate at least 2 or 3 of the 5 questions specifically tailored to the projects, tools, and experiences listed in their resume to make the interview highly personalized.
+
+Candidate Resume:
+$resume
+''';
+    }
+
     try {
       final response = await http.post(
         Uri.parse(_baseUrl),
@@ -34,7 +44,7 @@ Output format:
           'model': 'llama3-8b-8192',
           'messages': [
             {'role': 'system', 'content': 'You are a helpful technical interviewer.'},
-            {'role': 'user', 'content': prompt}
+            {'role': 'user', 'content': basePrompt}
           ],
           'temperature': 0.7,
         }),

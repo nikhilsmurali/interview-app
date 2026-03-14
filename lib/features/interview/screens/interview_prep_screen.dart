@@ -14,12 +14,14 @@ class InterviewPrepScreen extends StatefulWidget {
   final String interviewId;
   final String companyName;
   final String role;
+  final String? resumeText;
 
   const InterviewPrepScreen({
     super.key,
     required this.interviewId,
     required this.companyName,
     required this.role,
+    this.resumeText,
   });
 
   @override
@@ -74,6 +76,7 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
       _questions = await service.generateInterviewQuestions(
         widget.companyName,
         widget.role,
+        widget.resumeText,
       );
       debugPrint("Generated Questions: $_questions");
 

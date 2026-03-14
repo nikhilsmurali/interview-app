@@ -10,6 +10,8 @@ class InterviewSession {
   final String status;
   final List<String> questions;
   final List<InterviewExchange> exchanges;
+  final double overallScore;
+  final String feedbackSummary;
 
   InterviewSession({
     required this.id,
@@ -21,6 +23,8 @@ class InterviewSession {
     required this.status,
     this.questions = const [],
     this.exchanges = const [],
+    this.overallScore = 0.0,
+    this.feedbackSummary = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -34,6 +38,8 @@ class InterviewSession {
       'status': status,
       'questions': questions,
       'exchanges': exchanges.map((e) => e.toMap()).toList(),
+      'overallScore': overallScore,
+      'feedbackSummary': feedbackSummary,
     };
   }
 
@@ -51,6 +57,8 @@ class InterviewSession {
               ?.map((e) => InterviewExchange.fromMap(e))
               .toList() ??
           [],
+      overallScore: (map['overallScore'] ?? 0).toDouble(),
+      feedbackSummary: map['feedbackSummary'] ?? '',
     );
   }
 }

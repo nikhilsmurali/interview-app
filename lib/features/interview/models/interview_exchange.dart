@@ -2,12 +2,14 @@ class InterviewExchange {
   final String question;
   final String answer;
   final String feedback;
+  final int rating;
   final DateTime timestamp;
 
   InterviewExchange({
     required this.question,
     required this.answer,
     required this.feedback,
+    required this.rating,
     required this.timestamp,
   });
 
@@ -16,6 +18,7 @@ class InterviewExchange {
       'question': question,
       'answer': answer,
       'feedback': feedback,
+      'rating': rating,
       'timestamp': timestamp.toIso8601String(),
     };
   }
@@ -25,6 +28,7 @@ class InterviewExchange {
       question: map['question'] ?? '',
       answer: map['answer'] ?? '',
       feedback: map['feedback'] ?? '',
+      rating: map['rating'] ?? 0,
       timestamp: DateTime.tryParse(map['timestamp'] ?? '') ?? DateTime.now(),
     );
   }
