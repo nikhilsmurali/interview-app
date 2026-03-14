@@ -56,8 +56,10 @@ Output format:
       // Parse the response to get individual questions
       final questions = response.text!
           .split('\n')
-          .where((line) => line.trim().isNotEmpty && RegExp(r'^\d+\.').hasMatch(line))
-          .map((line) => line.replaceFirst(RegExp(r'^\d+\.\s*'), '').trim())
+          .where((line) => line.trim().isNotEmpty && RegExp(r'\d+\.').hasMatch(line))
+          .map((line) {
+             return line.replaceFirst(RegExp(r'^.*?^?\d+\.\s*\*?\*?\s*'), '').replaceAll('**', '').trim();
+          })
           .toList();
 
       if (questions.isEmpty) {

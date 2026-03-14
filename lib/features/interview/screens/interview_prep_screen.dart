@@ -68,7 +68,7 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
       debugPrint("Error initializing camera: $e");
     }
 
-    // 3. Generate Questions (OpenAI)
+    // 3. Generate Questions (Groq API)
     try {
       final service = OpenAIService();
       _questions = await service.generateInterviewQuestions(

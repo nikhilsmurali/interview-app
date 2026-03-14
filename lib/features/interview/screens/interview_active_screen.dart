@@ -68,9 +68,16 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   }
 
   Future<void> _initSpeechAndTTS() async {
-    await _flutterTts.setLanguage("en-US");
+    try {
+      await _flutterTts.setLanguage("en-US");
+    } catch (e) {
+      debugPrint("Could not set language, using device default");
+    }
     await _flutterTts.setSpeechRate(0.5);
     await _flutterTts.setPitch(1.0);
+    await _flutterTts.setVolume(1.0); 
+    // This MUST be set once at initialization.
+    await _flutterTts.awaitSpeakCompletion(true);
 
     bool available = await _speech.initialize(
       onStatus: (status) => debugPrint('STT Status: $status'),
@@ -128,8 +135,12 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       _avatarController.play(); // Animate avatar
     });
 
-    await _flutterTts.speak(question);
-    await _flutterTts.awaitSpeakCompletion(true);
+    try {
+      // Timeout prevents infinite loop if the device's TTS engine is broken or silent
+      await _flutterTts.speak(question).timeout(const Duration(seconds: 15));
+    } catch (e) {
+      debugPrint("TTS Timeout or Error: $e");
+    }
 
     if (mounted) {
       setState(() {
@@ -183,11 +194,33 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       _statusText = "Analyzing answer...";
     });
 
-    if (_currentAnswer.trim().isEmpty) {
-      _currentAnswer = "No answer provided.";
+    if (_currentAnswer.trim().isEmpty || _currentAnswer.trim().length < 8) {
+      // Short-circuit: The user didn't say anything meaningful, ask them to repeat
+      setState(() {
+        _statusText = "Asking to repeat...";
+        _isSpeaking = true;
+      });
+      _avatarController.play();
+
+      try {
+        await _flutterTts.speak("I didn't quite catch that. Could you please answer clearly and loudly?").timeout(const Duration(seconds: 15));
+      } catch (e) {
+        debugPrint("Error speaking feedback: $e");
+      }
+
+      if (mounted) {
+        setState(() {
+          _isSpeaking = false;
+          _avatarController.pause();
+          _statusText = "Listening...";
+          _isListening = true;
+        });
+        _startListening();
+      }
+      return; // Do not increment question index or save exchange
     }
 
-    // 1. Evaluate with OpenAI
+    // 1. Evaluate with Groq
     final currentQuestion = widget.questions[_currentQuestionIndex];
     final evaluation = await _openAIService.evaluateAnswer(
       currentQuestion,
@@ -214,8 +247,8 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     });
 
     try {
-      await _flutterTts.speak(feedback);
-      await _flutterTts.awaitSpeakCompletion(true);
+      // Make sure speech doesn't hang forever
+      await _flutterTts.speak(feedback).timeout(const Duration(seconds: 15));
     } catch (e) {
       debugPrint("Error speaking feedback: $e");
     }
