@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:video_player/video_player.dart';
+import 'package:ai_interviewer/core/services/eleven_labs_service.dart';
 import 'package:ai_interviewer/features/home/screens/interview_report_screen.dart';
 import 'package:ai_interviewer/features/home/models/interview_session.dart';
 
@@ -46,6 +47,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   final FlutterTts _flutterTts = FlutterTts();
   final stt.SpeechToText _speech = stt.SpeechToText();
   final OpenAIService _openAIService = OpenAIService();
+  final ElevenLabsService _elevenLabsService = ElevenLabsService();
 
   // State
   int _currentQuestionIndex = 0;
@@ -143,10 +145,17 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     });
 
     try {
-      // Timeout prevents infinite loop if the device's TTS engine is broken or silent
-      await _flutterTts.speak(question).timeout(const Duration(seconds: 15));
+      // 1. Try ElevenLabs for premium voice
+      _statusText = "Interviewer is speaking (Premium)...";
+      await _elevenLabsService.speak(question).timeout(const Duration(seconds: 15));
     } catch (e) {
-      debugPrint("TTS Timeout or Error: $e");
+      debugPrint("ElevenLabs Failed: $e. Using fallback TTS.");
+      try {
+        _statusText = "Interviewer is speaking...";
+        await _flutterTts.speak(question).timeout(const Duration(seconds: 15));
+      } catch (ttsErr) {
+        debugPrint("TTS Fallback Failed: $ttsErr");
+      }
     }
 
     if (mounted) {
@@ -265,10 +274,17 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     });
 
     try {
-      // Make sure speech doesn't hang forever
-      await _flutterTts.speak(feedback).timeout(const Duration(seconds: 15));
+      // 1. Try ElevenLabs for premium feedback
+      _statusText = "Providing feedback (Premium)...";
+      await _elevenLabsService.speak(feedback).timeout(const Duration(seconds: 15));
     } catch (e) {
-      debugPrint("Error speaking feedback: $e");
+      debugPrint("ElevenLabs Feedback Failed: $e. Using fallback TTS.");
+      try {
+        _statusText = "Providing feedback...";
+        await _flutterTts.speak(feedback).timeout(const Duration(seconds: 15));
+      } catch (ttsErr) {
+        debugPrint("TTS Feedback Fallback Failed: $ttsErr");
+      }
     }
 
     if (mounted) {
@@ -286,6 +302,52 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     });
 
     _askNextQuestion();
+  }
+
+  Future<void> _skipQuestion() async {
+    if (_isProcessing || _isSpeaking) return;
+
+    await _speech.stop();
+    setState(() {
+      _isListening = false;
+      _isProcessing = true;
+      _statusText = "Skipping question...";
+    });
+
+    // 1. Store a skipped exchange so it appears in the report
+    final currentQuestion = widget.questions[_currentQuestionIndex];
+    final exchange = InterviewExchange(
+      question: currentQuestion,
+      answer: "Candidate skipped this question.",
+      feedback: "No problem. Let's move on to something else.",
+      rating: 0,
+      timestamp: DateTime.now(),
+    );
+    _exchanges.add(exchange);
+
+    // 2. Short acknowledgment from AI
+    setState(() {
+      _isSpeaking = true;
+      _avatarController.play();
+    });
+
+    try {
+      // Use the fail-safe speaking logic
+      await _elevenLabsService.speak("No problem. Let's try another one.").timeout(const Duration(seconds: 10));
+    } catch (e) {
+      await _flutterTts.speak("No problem. Let's move to the next question.");
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSpeaking = false;
+        _avatarController.pause();
+        _isProcessing = false;
+        _currentAnswer = '';
+        _currentQuestionIndex++;
+      });
+      _askNextQuestion();
+    }
   }
   
   Future<void> _endInterview() async {
@@ -357,6 +419,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     _cameraController.dispose();
     _avatarController.dispose();
     _flutterTts.stop();
+    _elevenLabsService.dispose();
     _speech.cancel();
     super.dispose();
   }
@@ -500,33 +563,48 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // Submit Answer / Stop Listening
                   if (_isListening)
-                    Row(
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () {
-                             // Restart Mic manually if stuck
-                             _startListening();
-                          },
-                          icon: const Icon(Icons.mic),
-                          label: const Text("Reset Mic"),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white24,
-                            foregroundColor: Colors.white,
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: _skipQuestion,
+                            icon: const Icon(Icons.skip_next, size: 18),
+                            label: const Text("Don't Know", style: TextStyle(fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white10,
+                              foregroundColor: Colors.white70,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          onPressed: _stopListeningAndProcess,
-                          icon: const Icon(Icons.check),
-                          label: const Text("Done Speaking"),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6366F1),
-                            foregroundColor: Colors.white,
+                          const SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                               // Restart Mic manually if stuck
+                               _startListening();
+                            },
+                            icon: const Icon(Icons.mic, size: 18),
+                            label: const Text("Reset Mic", style: TextStyle(fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white24,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            onPressed: _stopListeningAndProcess,
+                            icon: const Icon(Icons.check, size: 18),
+                            label: const Text("Done Speaking", style: TextStyle(fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF6366F1),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ],
+                      ),
                     )
                   else if (_isProcessing)
                      const CircularProgressIndicator(color: Colors.white)

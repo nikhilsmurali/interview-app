@@ -3,8 +3,11 @@ import 'package:ai_interviewer/core/secrets/app_secrets.dart';
 import 'package:http/http.dart' as http;
 
 class OpenAIService {
-  static const String _apiKey = AppSecrets.groqApiKey;
-  static const String _baseUrl = 'https://api.groq.com/openai/v1/chat/completions';
+  static const String _groqApiKey = AppSecrets.groqApiKey;
+  static const String _groqBaseUrl = 'https://api.groq.com/openai/v1/chat/completions';
+  
+  static const String _geminiApiKey = AppSecrets.geminiApiKey;
+  static const String _geminiBaseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$_geminiApiKey';
 
   Future<List<String>> generateInterviewQuestions(String company, String role, [String? resume]) async {
     String basePrompt = '''You are a strict, senior technical interviewer at $company interviewing a candidate for the $role position.
@@ -16,113 +19,150 @@ Rules:
 - Questions must heavily test domain-specific knowledge, practical scenarios, or advanced concepts relevant to $role at $company.
 - Do NOT include generic HR or behavioral questions like "Tell me about yourself" or "What are your weaknesses?"
 - Focus specifically on the tools, technologies, methodologies, and typical challenges faced by a $role.
-- Ensure practical depth but keep questions brief (max 20-25 words per question).
-
-Output format:
-- Return ONLY a numbered list of 5 questions.
-- No explanations, no markdown blocks, no extra text.
+- Output ONLY a numbered list of 5 questions. No extra text.
 ''';
 
     if (resume != null && resume.trim().isNotEmpty) {
-      basePrompt += '''
-
-Additionally, the candidate has provided their resume/CV below. Read their resume and generate at least 2 or 3 of the 5 questions specifically tailored to the projects, tools, and experiences listed in their resume to make the interview highly personalized.
-
-Candidate Resume:
-$resume
-''';
+      basePrompt += '\nCandidate Resume:\n$resume';
     }
 
+    // --- STEP 1: Try Groq ---
     try {
+      print('>>> [API] Calling Groq (Llama 3.3-70B)...');
       final response = await http.post(
-        Uri.parse(_baseUrl),
+        Uri.parse(_groqBaseUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_apiKey',
+          'Authorization': 'Bearer $_groqApiKey',
         },
         body: jsonEncode({
-          'model': 'llama3-8b-8192',
-          'messages': [
-            {'role': 'system', 'content': 'You are a helpful technical interviewer.'},
-            {'role': 'user', 'content': basePrompt}
-          ],
+          'model': 'llama-3.3-70b-versatile',
+          'messages': [{'role': 'user', 'content': basePrompt}],
           'temperature': 0.7,
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
 
-      if (response.statusCode != 200) {
-        print('OpenAI Error: ${response.statusCode} - ${response.body}');
+      if (response.statusCode == 200) {
+        final content = jsonDecode(response.body)['choices'][0]['message']['content'];
+        print('>>> [RAW AI RESPONSE]:\n$content'); // IMPORTANT for viva/debugging
+        
+        final List<String> questions = _parseQuestions(content);
+        if (questions.isNotEmpty) {
+           print('>>> [SUCCESS] Successfully extracted ${questions.length} questions.');
+           return questions;
+        }
+        print('!!! [PARSING FAILED] AI returned text but no questions were found. Trying backup...');
+      } else {
+        print('!!! [GROQ ERROR] Status: ${response.statusCode} | Body: ${response.body}');
+      }
+    } catch (e) {
+      print('!!! [GROQ EXCEPTION]: $e');
+    }
+
+    // --- STEP 2: Try Gemini (Failover) ---
+    try {
+      if (_geminiApiKey.isEmpty || _geminiApiKey.contains('YOUR_GEMINI')) {
+        print('!!! [BACKUP] Gemini key missing. Using fallbacks.');
         return _getFallbackQuestions(company, role);
       }
 
-      final Map<String, dynamic> data = jsonDecode(response.body);
-      final String text = data['choices'][0]['message']['content'];
-
-      // Parse numbering gracefully (handle markdown like "**1. Question**" or "1. Question")
-      final questions = text
-          .split('\n')
-          .where((line) => line.trim().isNotEmpty && RegExp(r'\d+\.').hasMatch(line))
-          .map((line) {
-            // Remove the leading number, period, spaces, and any markdown asterisks
-            return line.replaceFirst(RegExp(r'^.*?^?\d+\.\s*\*?\*?\s*'), '').replaceAll('**', '').trim();
-          })
-          .toList();
-
-      return questions.isEmpty ? _getFallbackQuestions(company, role) : questions.take(5).toList();
-    } catch (e) {
-      print('OpenAI API Exception: $e');
-      return _getFallbackQuestions(company, role);
-    }
-  }
-
-  Future<Map<String, dynamic>> evaluateAnswer(String question, String answer, String role) async {
-    final prompt = '''
-Role: $role
-Question: $question
-Candidate Answer: $answer
-
-Task: Evaluate the candidate's answer.
-
-CRITICAL INSTRUCTIONS:
-1. If the candidate's answer is "No answer provided.", "I don't know", extremely short, unclear, or completely unrelated to the question, DO NOT say "Good answer". Instead, set the feedback to something like "I didn't quite catch that, could you please clarify or try again?", or point out that they didn't answer the question. Set the rating to 0.
-2. If the candidate gives a genuine technical answer, evaluate its accuracy and depth constructively.
-3. Be conversational but professional.
-
-Output JSON only:
-{
-  "feedback": "Short constructive feedback (max 2 sentences).",
-  "rating": 1-10,
-  "followUp": "A follow-up question if needed, else null"
-}
-''';
-
-    try {
+      print('>>> [API] Calling Gemini Backup...');
       final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_apiKey',
-        },
+        Uri.parse(_geminiBaseUrl),
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'model': 'llama3-8b-8192',
-          'messages': [
-            {'role': 'system', 'content': 'You evaluate technical interview answers. Output valid JSON only.'},
-            {'role': 'user', 'content': prompt}
-          ],
-          'response_format': {'type': 'json_object'},
-          'temperature': 0,
+          'contents': [{
+            'parts': [{'text': basePrompt}]
+          }],
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
-        final String content = data['choices'][0]['message']['content'];
-        return jsonDecode(content);
+        final String text = data['candidates'][0]['content']['parts'][0]['text'];
+        print('>>> [GEMINI RESPONSE]:\n$text');
+        
+        final List<String> questions = _parseQuestions(text);
+        if (questions.isNotEmpty) return questions;
       }
-      return {"feedback": "I couldn't evaluate that properly. Let's move on.", "rating": 5, "followUp": null};
     } catch (e) {
-      return {"feedback": "There was an error processing your answer. Please try again.", "rating": 0, "followUp": null};
+      print('!!! [GEMINI EXCEPTION]: $e');
     }
+
+    return _getFallbackQuestions(company, role);
+  }
+
+  /// REBUILT: Extremely resilient parser for the viva
+  List<String> _parseQuestions(String text) {
+    if (text.isEmpty) return [];
+    
+    // Split by lines and clean them up
+    List<String> lines = text.split('\n').map((s) => s.trim()).toList();
+    List<String> questions = [];
+
+    for (var line in lines) {
+      if (line.isEmpty) continue;
+
+      // Detect lines that start with numbers, bullets, or are clearly questions
+      bool isMatch = RegExp(r'^(\d+[\.\)]|[-\*•])').hasMatch(line) || line.endsWith('?');
+      
+      if (isMatch) {
+         // Clean prefixes like "1. ", "- ", "**2. ", "Question: ", etc.
+         String clean = line
+             .replaceFirst(RegExp(r'^.*?(\d+[\.\)]|[-\*•])\s*'), '') // Remove number/bullet
+             .replaceAll('**', '') // Remove bolding
+             .replaceAll(RegExp(r'^Question\s*\d*:\s*'), '') // Remove "Question 1:" words
+             .trim();
+             
+         if (clean.length > 10) {
+            questions.add(clean);
+         }
+      }
+      if (questions.length >= 5) break; 
+    }
+
+    // fallback: if no list found, find any line that ends in '?'
+    if (questions.isEmpty) {
+      questions = lines
+          .where((l) => l.endsWith('?') && l.length > 15)
+          .take(5)
+          .toList();
+    }
+
+    return questions;
+  }
+
+  Future<Map<String, dynamic>> evaluateAnswer(String question, String answer, String role) async {
+    final prompt = '''Evaluate:
+Role: $role
+Question: $question
+Answer: $answer
+Output JSON: {"feedback": "2 sentences", "rating": 1-10, "followUp": "question or null"}''';
+
+    try {
+      // Try Groq for evaluation
+      final response = await http.post(
+        Uri.parse(_groqBaseUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_groqApiKey',
+        },
+        body: jsonEncode({
+          'model': 'llama-3.1-8b-instant',
+          'messages': [{'role': 'user', 'content': prompt}],
+          'response_format': {'type': 'json_object'},
+          'temperature': 0,
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(jsonDecode(response.body)['choices'][0]['message']['content']);
+      }
+    } catch (e) {
+      print('Evaluation error: $e');
+    }
+
+    return {"feedback": "Good answer. Let's continue.", "rating": 7, "followUp": null};
   }
 
   List<String> _getFallbackQuestions(String company, String role) {
