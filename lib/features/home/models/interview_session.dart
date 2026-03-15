@@ -8,6 +8,7 @@ class InterviewSession {
   final double yearsOfExperience;
   final DateTime createdAt;
   final String status;
+  final String difficulty;
   final List<String> questions;
   final List<InterviewExchange> exchanges;
   final double overallScore;
@@ -21,6 +22,7 @@ class InterviewSession {
     required this.yearsOfExperience,
     required this.createdAt,
     required this.status,
+    this.difficulty = 'Medium',
     this.questions = const [],
     this.exchanges = const [],
     this.overallScore = 0.0,
@@ -36,6 +38,7 @@ class InterviewSession {
       'yearsOfExperience': yearsOfExperience,
       'createdAt': createdAt.toIso8601String(),
       'status': status,
+      'difficulty': difficulty,
       'questions': questions,
       'exchanges': exchanges.map((e) => e.toMap()).toList(),
       'overallScore': overallScore,
@@ -52,6 +55,7 @@ class InterviewSession {
       yearsOfExperience: (map['yearsOfExperience'] ?? 0).toDouble(),
       createdAt: DateTime.parse(map['createdAt']),
       status: map['status'] ?? 'initiated',
+      difficulty: map['difficulty'] ?? 'Medium',
       questions: List<String>.from(map['questions'] ?? []),
       exchanges: (map['exchanges'] as List<dynamic>?)
               ?.map((e) => InterviewExchange.fromMap(e))

@@ -13,13 +13,13 @@ class InterviewReportScreen extends StatelessWidget {
     final dateStr = DateFormat('MMM d, yyyy').format(session.createdAt);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Interview Report', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text('Interview Report', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new, color: Theme.of(context).colorScheme.onSurface, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -33,25 +33,25 @@ class InterviewReportScreen extends StatelessWidget {
             const SizedBox(height: 24),
 
             // Performance Summary (Hardcoded for now)
-            _buildSectionTitle('Performance Summary'),
+            _buildSectionTitle(context, 'Performance Summary'),
             const SizedBox(height: 12),
-            _buildSummaryCard(),
+            _buildSummaryCard(context),
             const SizedBox(height: 32),
 
             // Q&A Exchanges
-            _buildSectionTitle('Interview Exchanges'),
+            _buildSectionTitle(context, 'Interview Exchanges'),
             const SizedBox(height: 12),
             if (session.exchanges.isEmpty)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40),
-                  child: Text('No exchanges recorded for this session.', 
-                    style: TextStyle(color: Colors.white54)),
-                ),
-              )
+               Center(
+                 child: Padding(
+                   padding: const EdgeInsets.symmetric(vertical: 40),
+                 child: Text('No exchanges recorded for this session.', 
+                     style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
+                 ),
+               )
             else
               ...session.exchanges.asMap().entries.map((entry) {
-                return _buildExchangeCard(entry.key + 1, entry.value);
+                return _buildExchangeCard(context, entry.key + 1, entry.value);
               }),
             
             const SizedBox(height: 40),
@@ -66,14 +66,14 @@ class InterviewReportScreen extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+          colors: [Color(0xFFFF5A00), Color(0xFFFF8A00)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF6366F1).withOpacity(0.3),
+            color: const Color(0xFFFF5A00).withOpacity(0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -127,26 +127,26 @@ class InterviewReportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
+  Widget _buildSectionTitle(BuildContext context, String title) {
     return Text(
       title,
-      style: const TextStyle(
-        color: Colors.white,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurface,
         fontSize: 18,
         fontWeight: FontWeight.bold,
       ),
     );
   }
 
-  Widget _buildSummaryCard() {
+  Widget _buildSummaryCard(BuildContext context) {
     double averageScore = session.overallScore;
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,14 +157,14 @@ class InterviewReportScreen extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 'Overall Score: $averageScore / 10',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 18),
               ),
             ],
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
              'Question Performance',
-             style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
+             style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           // Analytics Chart
@@ -187,7 +187,7 @@ class InterviewReportScreen extends StatelessWidget {
                             padding: const EdgeInsets.only(top: 8.0),
                             child: Text(
                               'Q${value.toInt() + 1}',
-                              style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 10, fontWeight: FontWeight.bold),
                             ),
                           );
                         },
@@ -201,7 +201,7 @@ class InterviewReportScreen extends StatelessWidget {
                           if (value == 0 || value == 10 || value == 5) {
                             return Text(
                               value.toInt().toString(),
-                              style: const TextStyle(color: Colors.white38, fontSize: 10),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3), fontSize: 10),
                             );
                           }
                           return const SizedBox.shrink();
@@ -216,8 +216,8 @@ class InterviewReportScreen extends StatelessWidget {
                     show: true,
                     drawVerticalLine: false,
                     horizontalInterval: 5,
-                    getDrawingHorizontalLine: (value) => const FlLine(
-                      color: Colors.white10,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05),
                       strokeWidth: 1,
                     ),
                   ),
@@ -245,20 +245,20 @@ class InterviewReportScreen extends StatelessWidget {
               ),
             )
           else
-            const Center(child: Text("No data to display.", style: TextStyle(color: Colors.white38))),
+            Center(child: Text("No data to display.", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3)))),
         ],
       ),
     );
   }
 
-  Widget _buildExchangeCard(int index, dynamic exchange) {
+  Widget _buildExchangeCard(BuildContext context, int index, dynamic exchange) {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B).withOpacity(0.5),
+        color: Theme.of(context).colorScheme.surface.withOpacity(0.8),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -268,12 +268,12 @@ class InterviewReportScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withOpacity(0.2),
+                  color: const Color(0xFFFF5A00).withOpacity(0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   'Q$index',
-                  style: const TextStyle(color: Color(0xFF818CF8), fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: Color(0xFFFF5A00), fontWeight: FontWeight.bold),
                 ),
               ),
               const Spacer(),
@@ -297,29 +297,29 @@ class InterviewReportScreen extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             exchange.question,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600, fontSize: 16),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'YOUR ANSWER',
-            style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
           ),
           const SizedBox(height: 8),
           Text(
             exchange.answer,
-            style: const TextStyle(color: Colors.white70, height: 1.4),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), height: 1.4),
           ),
           const SizedBox(height: 16),
           const Divider(color: Colors.white10),
           const SizedBox(height: 12),
           const Text(
             'AI FEEDBACK',
-            style: TextStyle(color: Color(0xFF6366F1), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+            style: TextStyle(color: Color(0xFFFF5A00), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
           ),
           const SizedBox(height: 8),
           Text(
             exchange.feedback,
-            style: const TextStyle(color: Colors.white60, fontSize: 13, fontStyle: FontStyle.italic),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6), fontSize: 13, fontStyle: FontStyle.italic),
           ),
         ],
       ),

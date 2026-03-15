@@ -30,13 +30,13 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Interview History', style: TextStyle(color: Colors.white)),
+        title: Text('Interview History', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onSurface),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -44,7 +44,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         future: _reportsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)));
+            return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5A00)));
           }
 
           if (snapshot.hasError) {
@@ -54,11 +54,11 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           final reports = snapshot.data ?? [];
 
           if (reports.isEmpty) {
-            return const Center(
+            return Center(
               child: Text(
                 'No interviews found.\nStart a new one!',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white54, fontSize: 16),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 16),
               ),
             );
           }
@@ -73,30 +73,30 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                  border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1)),
                 ),
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(16),
                   leading: CircleAvatar(
-                    backgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.2),
-                    child: const Icon(Icons.assignment_turned_in, color: Color(0xFF6366F1)),
+                    backgroundColor: const Color(0xFFFF5A00).withValues(alpha: 0.2),
+                    child: const Icon(Icons.assignment_turned_in, color: Color(0xFFFF5A00)),
                   ),
                   title: Text(
                     report.targetRole,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 4),
-                      Text(report.targetCompany, style: const TextStyle(color: Colors.white70)),
+                      Text(report.targetCompany, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7))),
                       const SizedBox(height: 4),
-                      Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                      Text(dateStr, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 12)),
                     ],
                   ),
-                  trailing: const Icon(Icons.chevron_right, color: Colors.white54),
+                  trailing: Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
                   onTap: () {
                     Navigator.push(
                       context,

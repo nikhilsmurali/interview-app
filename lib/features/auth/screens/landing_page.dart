@@ -14,9 +14,12 @@ class LandingPage extends StatelessWidget {
         children: [
           // Background Elements
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)],
+                colors: [
+                  Theme.of(context).scaffoldBackgroundColor,
+                  Theme.of(context).colorScheme.surface,
+                ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
@@ -42,7 +45,7 @@ class LandingPage extends StatelessWidget {
               height: 250,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0xFFEC4899),
+                color: Color(0xFFFF5A00),
               ),
             ).animate().scale(duration: 2.seconds, delay: 500.ms).blur(begin: const Offset(120, 120)),
           ),
@@ -59,17 +62,17 @@ class LandingPage extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
+                         Icon(
                           Icons.psychology,
                           size: 80,
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ).animate().fadeIn().moveY(begin: 20, end: 0),
                         const SizedBox(height: 24),
                         Text(
                           'AI Interviewer',
                           style: Theme.of(context).textTheme.displaySmall?.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                color: Theme.of(context).colorScheme.onSurface,
                               ),
                           textAlign: TextAlign.center,
                         ).animate().fadeIn(delay: 200.ms),
@@ -77,7 +80,7 @@ class LandingPage extends StatelessWidget {
                         Text(
                           'Master your interview skills with real-time AI feedback and speech analysis.',
                           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                color: Colors.white70,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                               ),
                           textAlign: TextAlign.center,
                         ).animate().fadeIn(delay: 400.ms),
@@ -96,7 +99,7 @@ class LandingPage extends StatelessWidget {
                     onPressed: () {
                       Navigator.pushNamed(context, '/login');
                     },
-                    child: const Text('I already have an account'),
+                    child: const Text('I already have an account', style: TextStyle(color: Color(0xFFFF5A00))),
                   ).animate().fadeIn(delay: 800.ms),
                   const SizedBox(height: 32),
                 ],

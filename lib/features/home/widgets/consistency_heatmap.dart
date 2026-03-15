@@ -34,7 +34,7 @@ class _ConsistencyHeatmapState extends State<ConsistencyHeatmap> {
         Text(
           'Consistency Tracker',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.bold,
               ),
         ),
@@ -42,9 +42,9 @@ class _ConsistencyHeatmapState extends State<ConsistencyHeatmap> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1)),
           ),
           child: FutureBuilder<List<InterviewSession>>(
             future: _reportsFuture,
@@ -53,7 +53,7 @@ class _ConsistencyHeatmapState extends State<ConsistencyHeatmap> {
                 return const Center(
                   child: Padding(
                     padding: EdgeInsets.all(16.0),
-                    child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+                    child: CircularProgressIndicator(color: Color(0xFFFF5A00)),
                   ),
                 );
               }
@@ -123,7 +123,7 @@ class _ConsistencyHeatmapState extends State<ConsistencyHeatmap> {
                       left: gridColumns.length * 16.0,
                       child: Text(
                         DateFormat('MMM').format(date),
-                        style: const TextStyle(color: Colors.white54, fontSize: 10),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 10),
                       ),
                     ),
                   );
@@ -161,7 +161,7 @@ class _ConsistencyHeatmapState extends State<ConsistencyHeatmap> {
                           top: 0,
                           child: Text(
                             DateFormat('MMM').format(date),
-                            style: const TextStyle(color: Colors.white54, fontSize: 10),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 10),
                           ),
                         ),
                       );
@@ -196,8 +196,8 @@ class _ConsistencyHeatmapState extends State<ConsistencyHeatmap> {
                       Text.rich(
                         TextSpan(
                           children: [
-                            TextSpan(text: '$totalInterviews ', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                            const TextSpan(text: 'interviews in the last year', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                            TextSpan(text: '$totalInterviews ', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 16)),
+                            TextSpan(text: 'interviews in the last year', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontSize: 14)),
                           ]
                         )
                       ),
@@ -205,8 +205,8 @@ class _ConsistencyHeatmapState extends State<ConsistencyHeatmap> {
                       Wrap(
                         spacing: 16,
                         children: [
-                          Text('Total active days: $activeDays', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                          Text('Max streak: $maxStreak', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                          Text('Total active days: $activeDays', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 12)),
+                          Text('Max streak: $maxStreak', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 12)),
                         ]
                       ),
                     ],
@@ -241,19 +241,19 @@ class _ConsistencyHeatmapState extends State<ConsistencyHeatmap> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      const Text('Less', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                      Text('Less', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 10)),
                       const SizedBox(width: 6),
-                      _buildLegendBox(Colors.white.withValues(alpha: 0.05)),
+                      _buildLegendBox(context, Theme.of(context).colorScheme.onSurface.withOpacity(0.05)),
                       const SizedBox(width: 4),
-                      _buildLegendBox(const Color(0xFF6366F1).withValues(alpha: 0.3)),
+                      _buildLegendBox(context, const Color(0xFFFF5A00).withOpacity(0.3)),
                       const SizedBox(width: 4),
-                      _buildLegendBox(const Color(0xFF6366F1).withValues(alpha: 0.5)),
+                      _buildLegendBox(context, const Color(0xFFFF5A00).withOpacity(0.5)),
                       const SizedBox(width: 4),
-                      _buildLegendBox(const Color(0xFF6366F1).withValues(alpha: 0.7)),
+                      _buildLegendBox(context, const Color(0xFFFF5A00).withOpacity(0.7)),
                       const SizedBox(width: 4),
-                      _buildLegendBox(const Color(0xFF6366F1)),
+                      _buildLegendBox(context, const Color(0xFFFF5A00)),
                       const SizedBox(width: 6),
-                      const Text('More', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                      Text('More', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 10)),
                     ],
                   ),
                 ],
@@ -275,19 +275,19 @@ class _ConsistencyHeatmapState extends State<ConsistencyHeatmap> {
     Color color;
     switch (level) {
       case 0:
-        color = Colors.white.withValues(alpha: 0.05);
+        color = Theme.of(context).colorScheme.onSurface.withOpacity(0.05);
         break;
       case 1:
-        color = const Color(0xFF6366F1).withValues(alpha: 0.3);
+        color = const Color(0xFFFF5A00).withOpacity(0.3);
         break;
       case 2:
-        color = const Color(0xFF6366F1).withValues(alpha: 0.5);
+        color = const Color(0xFFFF5A00).withOpacity(0.5);
         break;
       case 3:
-        color = const Color(0xFF6366F1).withValues(alpha: 0.7);
+        color = const Color(0xFFFF5A00).withOpacity(0.7);
         break;
       default:
-        color = const Color(0xFF6366F1);
+        color = const Color(0xFFFF5A00);
     }
 
     return Tooltip(
@@ -300,20 +300,20 @@ class _ConsistencyHeatmapState extends State<ConsistencyHeatmap> {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(3),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05)),
         ),
       ),
     );
   }
 
-  Widget _buildLegendBox(Color color) {
+  Widget _buildLegendBox(BuildContext context, Color color) {
     return Container(
       width: 12,
       height: 12,
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(3),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05)),
       ),
     );
   }

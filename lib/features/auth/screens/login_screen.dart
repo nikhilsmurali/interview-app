@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import 'package:ai_interviewer/features/auth/services/auth_service.dart';
+import 'package:ai_interviewer/core/services/firestore_service.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class LoginScreen extends StatelessWidget {
@@ -25,9 +26,12 @@ class LoginScreen extends StatelessWidget {
         children: [
           // Background
            Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)],
+                colors: [
+                  Theme.of(context).scaffoldBackgroundColor,
+                  Theme.of(context).colorScheme.surface,
+                ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
@@ -45,14 +49,14 @@ class LoginScreen extends StatelessWidget {
                     'Welcome Back',
                     style: Theme.of(context).textTheme.displaySmall?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                   ).animate().fadeIn().moveX(begin: -20, end: 0),
                   const SizedBox(height: 8),
                   Text(
                     'Sign in to continue your progress',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Colors.white70,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                         ),
                   ).animate().fadeIn(delay: 200.ms),
                   const SizedBox(height: 48),
@@ -76,7 +80,7 @@ class LoginScreen extends StatelessWidget {
                       onPressed: () {
                         // TODO: Forgot Password
                       },
-                      child: const Text('Forgot Password?'),
+                       child: const Text('Forgot Password?', style: TextStyle(color: Color(0xFFFF5A00))),
                     ),
                   ).animate().fadeIn(delay: 500.ms),
 
@@ -96,7 +100,7 @@ class LoginScreen extends StatelessWidget {
                   Center(
                     child: Text(
                       'OR',
-                      style: const TextStyle(color: Colors.white38),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
                     ),
                   ).animate().fadeIn(delay: 650.ms),
                   
@@ -105,25 +109,31 @@ class LoginScreen extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      icon: const FaIcon(FontAwesomeIcons.google, color: Colors.white),
-                      label: const Text(
+                      icon: FaIcon(FontAwesomeIcons.google, color: Theme.of(context).colorScheme.onSurface),
+                      label: Text(
                         'Sign in with Google',
-                        style: TextStyle(color: Colors.white, fontSize: 16),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16),
                       ),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+                        side: BorderSide(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(15),
                         ),
                       ),
                       onPressed: () async {
                         final authService = Provider.of<AuthService>(context, listen: false);
-                        final user = await authService.signInWithGoogle();
-                        if (context.mounted && user != null) {
-                           // Navigation handled by main.dart AuthWrapper stream, 
-                           // but we pop to ensure we don't leave auth screens on stack.
-                           Navigator.of(context).popUntil((route) => route.isFirst);
+                        final userCredential = await authService.signInWithGoogle();
+                        if (context.mounted && userCredential != null) {
+                           // check if preferences exist
+                           final profile = await FirestoreService().getProfile(userCredential.user!.uid);
+                           if (context.mounted) {
+                             if (profile == null || profile.preferences == null) {
+                               Navigator.pushReplacementNamed(context, '/preferences');
+                             } else {
+                               Navigator.of(context).popUntil((route) => route.isFirst);
+                             }
+                           }
                         }
                       },
                     ),
@@ -134,14 +144,14 @@ class LoginScreen extends StatelessWidget {
                          Navigator.pushReplacementNamed(context, '/signup');
                       },
                       child: RichText(
-                        text: const TextSpan(
+                        text: TextSpan(
                           text: 'Don\'t have an account? ',
-                          style: TextStyle(color: Colors.white60),
-                          children: [
-                            TextSpan(
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
+                          children: const [
+                             TextSpan(
                               text: 'Sign Up',
                               style: TextStyle(
-                                color: Color(0xFF6366F1),
+                                color: Color(0xFFFF5A00),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),

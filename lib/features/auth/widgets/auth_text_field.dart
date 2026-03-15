@@ -20,18 +20,19 @@ class AuthTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05)),
       ),
       child: TextField(
         controller: controller,
         obscureText: obscureText,
         keyboardType: keyboardType,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         decoration: InputDecoration(
-          prefixIcon: Icon(icon, color: Colors.white70),
+          prefixIcon: Icon(icon, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
           hintText: hintText,
-          hintStyle: const TextStyle(color: Colors.white38),
+          hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3)),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 20,

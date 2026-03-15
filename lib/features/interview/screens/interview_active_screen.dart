@@ -11,7 +11,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:video_player/video_player.dart';
-import 'package:ai_interviewer/core/services/eleven_labs_service.dart';
 import 'package:ai_interviewer/features/home/screens/interview_report_screen.dart';
 import 'package:ai_interviewer/features/home/models/interview_session.dart';
 
@@ -29,7 +28,10 @@ class InterviewActiveScreen extends StatefulWidget {
     required this.role,
     required this.camera,
     required this.questions,
+    this.difficulty = 'Medium',
   });
+
+  final String difficulty;
 
   @override
   State<InterviewActiveScreen> createState() => _InterviewActiveScreenState();
@@ -47,7 +49,6 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   final FlutterTts _flutterTts = FlutterTts();
   final stt.SpeechToText _speech = stt.SpeechToText();
   final OpenAIService _openAIService = OpenAIService();
-  final ElevenLabsService _elevenLabsService = ElevenLabsService();
 
   // State
   int _currentQuestionIndex = 0;
@@ -58,7 +59,9 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   String _currentAnswer = '';
   String _statusText = 'Initializing...';
   
-  // Timer
+  // Follow-up tracking
+  final Set<String> _followUpQuestions = {};
+  int _followUpsForCurrentMainQuestion = 0;
   Timer? _timer;
   int _secondsElapsed = 0;
 
@@ -132,6 +135,8 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   }
 
   Future<void> _askNextQuestion() async {
+    if (!mounted) return;
+
     if (_currentQuestionIndex >= widget.questions.length) {
       _endInterview();
       return;
@@ -144,18 +149,11 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       _avatarController.play(); // Animate avatar
     });
 
+    _statusText = "Interviewer is speaking...";
     try {
-      // 1. Try ElevenLabs for premium voice
-      _statusText = "Interviewer is speaking (Premium)...";
-      await _elevenLabsService.speak(question).timeout(const Duration(seconds: 15));
-    } catch (e) {
-      debugPrint("ElevenLabs Failed: $e. Using fallback TTS.");
-      try {
-        _statusText = "Interviewer is speaking...";
-        await _flutterTts.speak(question).timeout(const Duration(seconds: 15));
-      } catch (ttsErr) {
-        debugPrint("TTS Fallback Failed: $ttsErr");
-      }
+      await _flutterTts.speak(question);
+    } catch (ttsErr) {
+      debugPrint("TTS Failed: $ttsErr");
     }
 
     if (mounted) {
@@ -167,6 +165,8 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       // Short delay to ensure TTS audio focus is released
       await Future.delayed(const Duration(milliseconds: 500));
       
+      if (!mounted) return;
+
       setState(() {
          _statusText = "Listening...";
          _isListening = true;
@@ -176,10 +176,14 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   }
 
   void _startListening() async {
+    if (!mounted) return;
+
     // Stop any existing session just in case
     if (_speech.isListening) {
       await _speech.stop();
     }
+    
+    if (!mounted) return;
     
     await _speech.listen(
       onResult: (result) {
@@ -220,15 +224,14 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
         debugPrint("Error speaking feedback: $e");
       }
 
-      if (mounted) {
-        setState(() {
-          _isSpeaking = false;
-          _avatarController.pause();
-          _statusText = "Listening...";
-          _isListening = true;
-        });
-        _startListening();
-      }
+      if (!mounted) return;
+      setState(() {
+        _isSpeaking = false;
+        _avatarController.pause();
+        _statusText = "Listening...";
+        _isListening = true;
+      });
+      _startListening();
       return; // Do not increment question index or save exchange
     }
 
@@ -238,7 +241,10 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       currentQuestion,
       _currentAnswer,
       widget.role,
+      widget.difficulty,
     );
+
+    if (!mounted) return;
 
     String feedback = evaluation['feedback'] ?? "Thank you.";
     int rating = 5;
@@ -263,7 +269,21 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     // Dynamic Follow-up
     String? followUp = evaluation['followUp'];
     if (followUp != null && followUp.trim().isNotEmpty && followUp.toLowerCase() != 'null') {
-      widget.questions.insert(_currentQuestionIndex + 1, followUp);
+      bool isCurrentAFollowUp = _followUpQuestions.contains(currentQuestion);
+      
+      bool allowFollowUp = true;
+      if (widget.difficulty == 'Easy') {
+        // For easy mode, if the current question is already a follow-up, don't ask more.
+        // Or if we want to restrict "total sub questions asked to 1", maybe it means only 1 per main question.
+        if (isCurrentAFollowUp) {
+          allowFollowUp = false;
+        }
+      }
+
+      if (allowFollowUp) {
+        _followUpQuestions.add(followUp);
+        widget.questions.insert(_currentQuestionIndex + 1, followUp);
+      }
     }
 
     // Speak Feedback
@@ -273,26 +293,14 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       _avatarController.play(); 
     });
 
+    _statusText = "Providing feedback...";
     try {
-      // 1. Try ElevenLabs for premium feedback
-      _statusText = "Providing feedback (Premium)...";
-      await _elevenLabsService.speak(feedback).timeout(const Duration(seconds: 15));
-    } catch (e) {
-      debugPrint("ElevenLabs Feedback Failed: $e. Using fallback TTS.");
-      try {
-        _statusText = "Providing feedback...";
-        await _flutterTts.speak(feedback).timeout(const Duration(seconds: 15));
-      } catch (ttsErr) {
-        debugPrint("TTS Feedback Fallback Failed: $ttsErr");
-      }
+      await _flutterTts.speak(feedback);
+    } catch (ttsErr) {
+      debugPrint("TTS Feedback Failed: $ttsErr");
     }
 
-    if (mounted) {
-      setState(() {
-        _isSpeaking = false;
-        _avatarController.pause();
-      });
-    }
+    if (!mounted) return;
     
     // Move to next
     setState(() {
@@ -332,11 +340,12 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     });
 
     try {
-      // Use the fail-safe speaking logic
-      await _elevenLabsService.speak("No problem. Let's try another one.").timeout(const Duration(seconds: 10));
-    } catch (e) {
       await _flutterTts.speak("No problem. Let's move to the next question.");
+    } catch (e) {
+      debugPrint("TTS Failed: $e");
     }
+
+    if (!mounted) return;
 
     if (mounted) {
       setState(() {
@@ -419,7 +428,6 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     _cameraController.dispose();
     _avatarController.dispose();
     _flutterTts.stop();
-    _elevenLabsService.dispose();
     _speech.cancel();
     super.dispose();
   }
@@ -431,99 +439,78 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // TOP HALF: Avatar (AI)
+            // TOP: AI Avatar (Interviewer)
             Expanded(
-              flex: 4,
               child: Stack(
-                alignment: Alignment.center,
+                fit: StackFit.expand,
                 children: [
-                   Container(color: Colors.black),
                    if (_isAvatarInitialized)
-                      AspectRatio(
-                        aspectRatio: _avatarController.value.aspectRatio,
-                        child: VideoPlayer(_avatarController),
-                      ),
+                      Center(
+                        child: AspectRatio(
+                          aspectRatio: _avatarController.value.aspectRatio,
+                          child: VideoPlayer(_avatarController),
+                        ),
+                      )
+                   else
+                      Container(color: Colors.black),
                    
-                   // Status Overlay
+                   // AI Caption Overlay
                    Positioned(
-                     top: 16,
-                     left: 16,
+                     bottom: 20,
+                     left: 20,
+                     right: 20,
                      child: Container(
-                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                        decoration: BoxDecoration(
-                         color: Colors.black54,
-                         borderRadius: BorderRadius.circular(20),
+                         color: Colors.black.withOpacity(0.6),
+                         borderRadius: BorderRadius.circular(12),
                        ),
                        child: Text(
-                         _statusText,
-                         style: const TextStyle(color: Colors.white, fontSize: 12),
+                         _currentQuestionIndex < widget.questions.length 
+                            ? widget.questions[_currentQuestionIndex]
+                            : "Interview concluding...",
+                         style: const TextStyle(
+                           color: Colors.white, 
+                           fontWeight: FontWeight.w500,
+                           fontSize: 14,
+                         ),
+                         textAlign: TextAlign.center,
                        ),
                      ),
                    ),
 
-                   // Timer
+                   // Status Badge (Top Left)
                    Positioned(
-                      top: 16,
-                      right: 16,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.circle, color: Colors.redAccent, size: 8),
-                            const SizedBox(width: 8),
-                            Text(
-                              _formatTime(_secondsElapsed),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-
-            // MIDDLE: Transcript / Question
-            Container(
-              height: 120,
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              color: const Color(0xFF0F172A),
-              child: Column(
-                children: [
-                   Text(
-                     _currentQuestionIndex < widget.questions.length 
-                        ? widget.questions[_currentQuestionIndex]
-                        : "Wrapping up...",
-                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                     textAlign: TextAlign.center,
-                     maxLines: 2,
-                     overflow: TextOverflow.ellipsis,
-                   ),
-                   const Spacer(),
-                   Text(
-                     _currentAnswer.isEmpty ? "..." : _currentAnswer,
-                     style: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic),
-                     textAlign: TextAlign.center,
-                     maxLines: 2,
-                     overflow: TextOverflow.ellipsis,
+                     top: 16,
+                     left: 16,
+                     child: Container(
+                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                       decoration: BoxDecoration(
+                         color: const Color(0xFFFF5A00).withOpacity(0.8),
+                         borderRadius: BorderRadius.circular(20),
+                       ),
+                       child: Row(
+                         mainAxisSize: MainAxisSize.min,
+                         children: [
+                           const Icon(Icons.psychology, color: Colors.white, size: 14),
+                           const SizedBox(width: 6),
+                           Text(
+                             _statusText,
+                             style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                           ),
+                         ],
+                       ),
+                     ),
                    ),
                 ],
               ),
             ),
 
-            // BOTTOM HALF: Candidate Camera
+            // Divider line
+            Container(height: 1, color: Colors.white24),
+
+            // BOTTOM: Candidate (User)
             Expanded(
-              flex: 3,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -546,83 +533,185 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
                         );
                       } else {
                         return Container(
-                            color: Colors.black, 
-                            child: const Center(child: Icon(Icons.videocam_off, color: Colors.white24))
+                            color: const Color(0xFF1A1A1A), 
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.videocam_off, color: Colors.white.withOpacity(0.2), size: 48),
+                                  const SizedBox(height: 12),
+                                  Text("Camera Off", style: TextStyle(color: Colors.white.withOpacity(0.2))),
+                                ],
+                              )
+                            )
                         );
                       }
                     },
+                  ),
+
+                  // User Transcript Caption Overlay
+                  Positioned(
+                    bottom: 20,
+                    left: 20,
+                    right: 20,
+                    child: AnimatedOpacity(
+                      opacity: _currentAnswer.isEmpty ? 0 : 1,
+                      duration: const Duration(milliseconds: 300),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF5A00).withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _currentAnswer,
+                          style: const TextStyle(
+                            color: Colors.white, 
+                            fontStyle: FontStyle.italic,
+                            fontSize: 14,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Timer (Top Right)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.circle, color: Colors.redAccent, size: 8),
+                          const SizedBox(width: 8),
+                          Text(
+                            _formatTime(_secondsElapsed),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
 
-            // FOOTER: Controls
+            // FOOTER: Redesigned Controls
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
-              color: const Color(0xFF0F172A),
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+              color: Colors.black,
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  if (_isListening)
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          ElevatedButton.icon(
-                            onPressed: _skipQuestion,
-                            icon: const Icon(Icons.skip_next, size: 18),
-                            label: const Text("Don't Know", style: TextStyle(fontSize: 12)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white10,
-                              foregroundColor: Colors.white70,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  // Main Actions Expanded
+                  Expanded(
+                    child: _isListening
+                        ? SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: _skipQuestion,
+                                  icon: const Icon(Icons.close_rounded, size: 18),
+                                  label: const Text("Don't Know", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white.withOpacity(0.1),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  onPressed: _stopListeningAndProcess,
+                                  icon: const Icon(Icons.check_circle_rounded, size: 18),
+                                  label: const Text("Done Speaking", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFFF5A00),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                               // Restart Mic manually if stuck
-                               _startListening();
-                            },
-                            icon: const Icon(Icons.mic, size: 18),
-                            label: const Text("Reset Mic", style: TextStyle(fontSize: 12)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white24,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            onPressed: _stopListeningAndProcess,
-                            icon: const Icon(Icons.check, size: 18),
-                            label: const Text("Done Speaking", style: TextStyle(fontSize: 12)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF6366F1),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (_isProcessing)
-                     const CircularProgressIndicator(color: Colors.white)
-                  else
-                     const SizedBox(height: 48), // Spacer to keep height
-
-                  // Camera Toggle
-                  IconButton(
-                    onPressed: _toggleCamera,
-                    icon: Icon(_isCameraOff ? Icons.videocam_off : Icons.videocam),
-                    color: Colors.white,
+                          )
+                        : _isProcessing
+                            ? const Center(
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF5A00)),
+                                ),
+                              )
+                            : Container(
+                                height: 48,
+                                alignment: Alignment.centerLeft,
+                                child: const Text("Waiting...", style: TextStyle(color: Colors.white24)),
+                              ),
                   ),
 
-                  // Exit
-                  IconButton(
-                    onPressed: () => Navigator.pop(context), 
-                    icon: const Icon(Icons.close),
-                    color: Colors.red,
+                  const SizedBox(width: 12),
+
+                  // More (Three Dots) Menu
+                  Theme(
+                    data: Theme.of(context).copyWith(
+                      cardColor: const Color(0xFF1E1E1E),
+                    ),
+                    child: PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                      onSelected: (value) {
+                        switch (value) {
+                          case 'camera': _toggleCamera(); break;
+                          case 'mic': _startListening(); break;
+                          case 'end': Navigator.pop(context); break;
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'camera',
+                          child: Row(
+                            children: [
+                              Icon(_isCameraOff ? Icons.videocam : Icons.videocam_off, color: Colors.white, size: 20),
+                              const SizedBox(width: 12),
+                              Text(_isCameraOff ? "Turn Camera On" : "Turn Camera Off", style: const TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'mic',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.mic, color: Colors.white, size: 20),
+                              const SizedBox(width: 12),
+                              const Text("Reset Microphone", style: TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(height: 1),
+                        PopupMenuItem(
+                          value: 'end',
+                          child: const Row(
+                            children: [
+                              Icon(Icons.call_end, color: Colors.redAccent, size: 20),
+                              const SizedBox(width: 12),
+                              Text("End Interview", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

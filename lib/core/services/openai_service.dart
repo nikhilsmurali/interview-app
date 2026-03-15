@@ -9,17 +9,31 @@ class OpenAIService {
   static const String _geminiApiKey = AppSecrets.geminiApiKey;
   static const String _geminiBaseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$_geminiApiKey';
 
-  Future<List<String>> generateInterviewQuestions(String company, String role, [String? resume]) async {
+  Future<List<String>> generateInterviewQuestions(String company, String role, [String? resume, String difficulty = 'Medium']) async {
+    int numQuestions = 5;
+    if (difficulty == 'Medium') numQuestions = 7;
+    if (difficulty == 'Hard') numQuestions = 10;
+    
+    String difficultyPrompt = '';
+    if (difficulty == 'Easy') {
+      difficultyPrompt = 'Keep questions strictly at a foundational level. Focus on basic definitions, core syntax, and simple "what is" or "how to" questions. Avoid architectural discussions or complex logic scenarios.';
+    } else if (difficulty == 'Medium') {
+      difficultyPrompt = 'Focus on solid mid-level experience and practical scenarios.';
+    } else {
+      difficultyPrompt = 'Make the questions extremely advanced, testing expert-level architecture and deep systems knowledge.';
+    }
+
     String basePrompt = '''You are a strict, senior technical interviewer at $company interviewing a candidate for the $role position.
 
-Generate exactly 5 highly specific, challenging interview questions tailored to the $role role.
+Generate exactly $numQuestions highly specific interview questions tailored to the $role role.
+Difficulty Level: $difficulty - $difficultyPrompt
 
 Rules:
 - Each question must be a single concise sentence.
 - Questions must heavily test domain-specific knowledge, practical scenarios, or advanced concepts relevant to $role at $company.
 - Do NOT include generic HR or behavioral questions like "Tell me about yourself" or "What are your weaknesses?"
 - Focus specifically on the tools, technologies, methodologies, and typical challenges faced by a $role.
-- Output ONLY a numbered list of 5 questions. No extra text.
+- Output ONLY a numbered list of $numQuestions questions. No extra text.
 ''';
 
     if (resume != null && resume.trim().isNotEmpty) {
@@ -46,7 +60,7 @@ Rules:
         final content = jsonDecode(response.body)['choices'][0]['message']['content'];
         print('>>> [RAW AI RESPONSE]:\n$content'); // IMPORTANT for viva/debugging
         
-        final List<String> questions = _parseQuestions(content);
+        final List<String> questions = _parseQuestions(content, numQuestions);
         if (questions.isNotEmpty) {
            print('>>> [SUCCESS] Successfully extracted ${questions.length} questions.');
            return questions;
@@ -63,7 +77,7 @@ Rules:
     try {
       if (_geminiApiKey.isEmpty || _geminiApiKey.contains('YOUR_GEMINI')) {
         print('!!! [BACKUP] Gemini key missing. Using fallbacks.');
-        return _getFallbackQuestions(company, role);
+        return _getFallbackQuestions(company, role, numQuestions);
       }
 
       print('>>> [API] Calling Gemini Backup...');
@@ -82,18 +96,18 @@ Rules:
         final String text = data['candidates'][0]['content']['parts'][0]['text'];
         print('>>> [GEMINI RESPONSE]:\n$text');
         
-        final List<String> questions = _parseQuestions(text);
+        final List<String> questions = _parseQuestions(text, numQuestions);
         if (questions.isNotEmpty) return questions;
       }
     } catch (e) {
       print('!!! [GEMINI EXCEPTION]: $e');
     }
 
-    return _getFallbackQuestions(company, role);
+    return _getFallbackQuestions(company, role, numQuestions);
   }
 
   /// REBUILT: Extremely resilient parser for the viva
-  List<String> _parseQuestions(String text) {
+  List<String> _parseQuestions(String text, int limit) {
     if (text.isEmpty) return [];
     
     // Split by lines and clean them up
@@ -118,25 +132,29 @@ Rules:
             questions.add(clean);
          }
       }
-      if (questions.length >= 5) break; 
+      if (questions.length >= limit) break; 
     }
 
     // fallback: if no list found, find any line that ends in '?'
     if (questions.isEmpty) {
       questions = lines
           .where((l) => l.endsWith('?') && l.length > 15)
-          .take(5)
+          .take(limit)
           .toList();
     }
 
     return questions;
   }
 
-  Future<Map<String, dynamic>> evaluateAnswer(String question, String answer, String role) async {
+  Future<Map<String, dynamic>> evaluateAnswer(String question, String answer, String role, [String difficulty = 'Medium']) async {
     final prompt = '''Evaluate:
 Role: $role
+Difficulty Level: $difficulty
 Question: $question
 Answer: $answer
+Rules for $difficulty mode:
+${difficulty == 'Easy' ? '- Be encouraging and positive.\n- Only provide a follow-up question if the answer is completely missing core concepts, but keep it extremely simple.' : '- Provide constructive technical feedback.\n- Feel free to ask a challenging follow-up if the answer shows depth.'}
+
 Output JSON: {"feedback": "2 sentences", "rating": 1-10, "followUp": "question or null"}''';
 
     try {
@@ -165,49 +183,77 @@ Output JSON: {"feedback": "2 sentences", "rating": 1-10, "followUp": "question o
     return {"feedback": "Good answer. Let's continue.", "rating": 7, "followUp": null};
   }
 
-  List<String> _getFallbackQuestions(String company, String role) {
+  List<String> _getFallbackQuestions(String company, String role, int limit) {
     final lowerRole = role.toLowerCase();
     
+    List<String> baseQuestions = [];
     if (lowerRole.contains('flutter') || lowerRole.contains('dart')) {
-      return [
+      baseQuestions = [
         'Welcome to $company. As a $role, how would you optimize a ListView with thousands of items to prevent frame drops?',
         'When building large scale applications here at $company, when would you choose BLoC over Provider for state?',
         'Describe how to handle background tasks when the app is minimized or terminated.',
         'What is your approach to securing sensitive keys using Flutter Secure Storage?',
-        'How do you debug an issue that only occurs on native iOS/Android code via Platform Channels?'
+        'How do you debug an issue that only occurs on native iOS/Android code via Platform Channels?',
+        'How does Flutter rendering work under the hood?',
+        'What are the advantages of using Isolates in Dart for multi-threading?',
+        'Explain the differences between Hot Reload and Hot Restart.',
+        'How do you create custom animations using AnimationController?',
+        'Describe how the widget tree, element tree, and render tree communicate.'
       ];
     } else if (lowerRole.contains('frontend') || lowerRole.contains('react') || lowerRole.contains('angular') || lowerRole.contains('vue')) {
-      return [
+      baseQuestions = [
         'Welcome to $company. As a $role, how do you handle state management across deeply nested components?',
         'What strategies do you use to optimize the rendering performance of a web application?',
         'Explain how you would implement client-side caching and offline support for our web app.',
         'How do you ensure web accessibility (a11y) standards are met in your components?',
-        'Describe your approach to handling cross-browser compatibility issues.'
+        'Describe your approach to handling cross-browser compatibility issues.',
+        'What are the differences between client-side rendering and server-side rendering?',
+        'How does the Virtual DOM work and why is it faster?',
+        'Explain the concepts of debouncing and throttling.',
+        'How do you tackle memory leaks in single-page applications?',
+        'What strategies exist for managing complex CSS architectures in large web apps?'
       ];
     } else if (lowerRole.contains('backend') || lowerRole.contains('node') || lowerRole.contains('python') || lowerRole.contains('java') || lowerRole.contains('go')) {
-       return [
+       baseQuestions = [
         'Welcome to $company. As a $role, how do you design scalable APIs capable of handling high traffic?',
         'Explain how you enforce data integrity and manage complex database migrations.',
         'What caching strategies would you implement to reduce database load?',
         'How do you manage authentication and securely store user credentials?',
-        'Describe a situation where you had to troubleshoot and fix a memory leak or performance bottleneck on the server.'
+        'Describe a situation where you had to troubleshoot and fix a memory leak or performance bottleneck on the server.',
+        'Describe the differences between horizontal and vertical scaling.',
+        'How do you implement rate limiting in a microservices architecture?',
+        'Explain the CAP theorem and its implications in distributed databases.',
+        'What are the best practices for handling long-running background jobs?',
+        'How does containerization improve deployment strategies?'
       ];
     } else if (lowerRole.contains('data') || lowerRole.contains('machine learning') || lowerRole.contains('ai')) {
-       return [
+       baseQuestions = [
         'Welcome to $company. As a $role, how do you deal with missing or anomalous data in your datasets?',
         'Explain the trade-offs between picking a complex deep learning model versus a simpler regression model.',
         'How do you deploy and monitor a machine learning model in production?',
         'What metrics do you use to evaluate the performance of classification models?',
-        'Describe a time you optimized an ETL pipeline for better performance.'
+        'Describe a time you optimized an ETL pipeline for better performance.',
+        'Explain bias-variance tradeoff in machine learning algorithms.',
+        'How do you prevent overfitting when working with small datasets?',
+        'What are the challenges in building recommendation engines?',
+        'How does backpropagation work in deep neural networks?',
+        'Describe approaches for NLP tokenization and embedding generation.'
+      ];
+    } else {
+      baseQuestions = [
+        'Welcome to $company. As a $role, can you describe how you architect solutions for complex engineering problems?',
+        'What are the most critical technical skills needed to succeed as a $role at $company?',
+        'How do you ensure code quality, testing, and security in your day-to-day work?',
+        'Can you explain a difficult technical concept related to being a $role to a non-engineer?',
+        'What modern industry methodologies would you bring to improve our engineering workflows at $company?',
+        'How do you handle conflict in architectural decisions with fellow engineers?',
+        'Describe a time when you had to migrate legacy systems with zero downtime.',
+        'What processes do you implement to ensure reliable CI/CD pipelines?',
+        'How do you deal with technical debt while still shipping features quickly?',
+        'What makes a 10x engineer different from an average engineer?'
       ];
     }
     
-    return [
-      'Welcome to $company. As a $role, can you describe how you architect solutions for complex engineering problems?',
-      'What are the most critical technical skills needed to succeed as a $role at $company?',
-      'How do you ensure code quality, testing, and security in your day-to-day work?',
-      'Can you explain a difficult technical concept related to being a $role to a non-engineer?',
-      'What modern industry methodologies would you bring to improve our engineering workflows at $company?'
-    ];
+    return baseQuestions.take(limit).toList();
   }
 }

@@ -40,7 +40,13 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    await _auth.signOut();
+    try {
+      await _googleSignIn.signOut();
+      await _auth.signOut();
+      _user = null;
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Sign Out Error: $e");
+    }
   }
 }

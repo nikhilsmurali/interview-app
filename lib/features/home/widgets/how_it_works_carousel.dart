@@ -47,7 +47,7 @@ class _HowItWorksCarouselState extends State<HowItWorksCarousel> {
               Text(
                 'How it Works',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.bold,
                     ),
               ),
@@ -83,7 +83,7 @@ class _HowItWorksCarouselState extends State<HowItWorksCarousel> {
               width: isSelected ? 24 : 8,
               height: 8,
               decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF6366F1) : Colors.white24,
+                color: isSelected ? const Color(0xFFFF5A00) : Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
             );
@@ -118,9 +118,9 @@ class _HowItWorksCarouselState extends State<HowItWorksCarousel> {
         margin: const EdgeInsets.symmetric(horizontal: 8),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B),
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.2),
@@ -135,16 +135,16 @@ class _HowItWorksCarouselState extends State<HowItWorksCarousel> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                color: const Color(0xFFFF5A00).withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(step['icon'], color: const Color(0xFF6366F1), size: 32),
+              child: Icon(step['icon'], color: const Color(0xFFFF5A00), size: 32),
             ),
             const SizedBox(height: 16),
             Text(
               step['title'],
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -156,8 +156,8 @@ class _HowItWorksCarouselState extends State<HowItWorksCarousel> {
                   child: Text(
                     step['description'],
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white70,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                       fontSize: 13,
                       height: 1.4,
                     ),

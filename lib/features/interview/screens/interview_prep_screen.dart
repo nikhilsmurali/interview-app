@@ -15,6 +15,7 @@ class InterviewPrepScreen extends StatefulWidget {
   final String companyName;
   final String role;
   final String? resumeText;
+  final String difficulty;
 
   const InterviewPrepScreen({
     super.key,
@@ -22,6 +23,7 @@ class InterviewPrepScreen extends StatefulWidget {
     required this.companyName,
     required this.role,
     this.resumeText,
+    this.difficulty = 'Medium',
   });
 
   @override
@@ -77,6 +79,7 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
         widget.companyName,
         widget.role,
         widget.resumeText,
+        widget.difficulty,
       );
       debugPrint("Generated Questions: $_questions");
 
@@ -132,6 +135,7 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
           companyName: widget.companyName,
           role: widget.role,
           questions: _questions,
+          difficulty: widget.difficulty,
           camera: _cameras!.firstWhere(
             (c) => c.lensDirection == CameraLensDirection.front,
             orElse: () => _cameras!.first,
@@ -151,7 +155,7 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -160,14 +164,14 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
             Text(
               'Hardware Check',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.bold,
                   ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Setting up your studio...',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
             ),
 
             const SizedBox(height: 40),
@@ -179,10 +183,10 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
                 height: 280,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF6366F1), width: 3),
+                  border: Border.all(color: const Color(0xFFFF5A00), width: 3),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                      color: const Color(0xFFFF5A00).withValues(alpha: 0.3),
                       blurRadius: 20,
                       spreadRadius: 5,
                     )
@@ -216,8 +220,9 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
               padding: const EdgeInsets.all(24),
               margin: const EdgeInsets.symmetric(horizontal: 24),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05)),
               ),
               child: Column(
                 children: [
@@ -251,12 +256,12 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
                 children: [
                    Text(
                     'Starting in',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
                   ),
                   Text(
                     '$_countdown',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 48,
                       fontWeight: FontWeight.bold,
                     ),
@@ -268,7 +273,7 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
                 ],
               )
             else
-               const CircularProgressIndicator(color: Color(0xFF6366F1)),
+               const CircularProgressIndicator(color: Color(0xFFFF5A00)),
 
             const SizedBox(height: 40),
           ],
@@ -285,9 +290,9 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
   }) {
     return Row(
       children: [
-        Icon(icon, color: Colors.white70),
+        Icon(icon, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
         const SizedBox(width: 16),
-        Text(label, style: const TextStyle(color: Colors.white)),
+        Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
         const Spacer(),
         if (isLoading)
           const SizedBox(

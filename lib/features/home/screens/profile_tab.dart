@@ -1,8 +1,8 @@
 import 'package:ai_interviewer/core/services/theme_provider.dart';
 import 'package:ai_interviewer/features/auth/services/auth_service.dart';
-import 'package:ai_interviewer/features/home/screens/start_interview_screen.dart';
 import 'package:ai_interviewer/features/home/widgets/consistency_heatmap.dart';
 import 'package:ai_interviewer/features/home/screens/reports_list_screen.dart';
+import 'package:ai_interviewer/features/auth/screens/preferences_onboarding_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -18,14 +18,14 @@ class _ProfileTabState extends State<ProfileTab> {
   Widget build(BuildContext context) {
     // Determine if we are in dark mode for dynamic colors 
     // (though Theme.of(context) handles most, some manual colors were hardcoded)
-    final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = Provider.of<AuthService>(context).user;
     final userName = user?.displayName ?? 'Candidate';
-    final textColor = isDark ? Colors.white : Colors.black87;
-    final subTextColor = isDark ? Colors.white70 : Colors.black54;
+    final textColor = Theme.of(context).colorScheme.onSurface;
+    final subTextColor = textColor.withOpacity(0.7);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -78,33 +78,35 @@ class _ProfileTabState extends State<ProfileTab> {
 
           const SizedBox(height: 40),
 
-          // Action Buttons
-          _buildActionButton(
-            context,
-            label: 'Start New Interview',
-            icon: Icons.mic_none_rounded,
-            color: const Color(0xFF6366F1),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const StartInterviewScreen()),
-              );
-            },
-          ),
-          
-          const SizedBox(height: 16),
-          
+
           _buildActionButton(
             context,
             label: 'View Previous Reports',
             icon: Icons.assessment_outlined,
-            color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+            color: Theme.of(context).colorScheme.surface,
             textColor: textColor,
             iconColor: textColor,
             onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ReportsListScreen()),
+              );
+            },
+          ),
+
+          const SizedBox(height: 16),
+
+          _buildActionButton(
+            context,
+            label: 'Edit Content Preferences',
+            icon: Icons.settings_suggest_outlined,
+            color: Theme.of(context).colorScheme.surface,
+            textColor: textColor,
+            iconColor: textColor,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PreferencesOnboardingScreen(isEditing: true)),
               );
             },
           ),
@@ -143,9 +145,9 @@ class _ProfileTabState extends State<ProfileTab> {
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: color == const Color(0xFF6366F1)
+            side: color == const Color(0xFFFF5A00)
                 ? BorderSide.none
-                : BorderSide(color: textColor.withValues(alpha: 0.1)),
+                : BorderSide(color: textColor.withOpacity(0.1)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24),
         ),

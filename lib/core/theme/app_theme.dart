@@ -2,39 +2,59 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
+  // Brand Colors
+  static const Color brandBlack = Colors.black;
+  static const Color brandWhite = Colors.white;
+  static const Color brandLightGray = Color(0xFFF8FAFC);
+  static const Color brandOrange = Color(0xFFFF5A00);
+  static const Color brandDarkGray = Color(0xFF121212); // Slightly lighter black for surfaces
+
   static final darkTheme = ThemeData(
     brightness: Brightness.dark,
-    scaffoldBackgroundColor: const Color(0xFF0F172A), // Dark Slate
-    primaryColor: const Color(0xFF6366F1), // Indigo
+    scaffoldBackgroundColor: brandBlack,
+    primaryColor: brandOrange,
     colorScheme: const ColorScheme.dark(
-      primary: Color(0xFF6366F1),
-      secondary: Color(0xFFEC4899), // Pink
-      surface: Color(0xFF1E293B),
+      primary: brandOrange,
+      secondary: brandOrange,
+      surface: brandDarkGray,
+      onSurface: brandWhite,
+      onPrimary: brandWhite,
     ),
     textTheme: GoogleFonts.interTextTheme(
       ThemeData.dark().textTheme,
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: brandBlack,
+      foregroundColor: brandWhite,
+      elevation: 0,
     ),
     useMaterial3: true,
   );
 
   static final lightTheme = ThemeData(
     brightness: Brightness.light,
-    scaffoldBackgroundColor: const Color(0xFFF8FAFC), // Slate 50
-    primaryColor: const Color(0xFF6366F1),
+    scaffoldBackgroundColor: brandWhite,
+    primaryColor: brandOrange,
     colorScheme: const ColorScheme.light(
-      primary: Color(0xFF6366F1),
-      secondary: Color(0xFFEC4899),
-      surface: Colors.white,
-      onSurface: Color(0xFF1E293B), // Slate 800
+      primary: brandOrange,
+      secondary: brandOrange,
+      surface: brandLightGray,
+      onSurface: brandBlack,
+      onPrimary: brandWhite,
     ),
     textTheme: GoogleFonts.interTextTheme(
       ThemeData.light().textTheme,
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: brandWhite,
+      foregroundColor: brandBlack,
+      elevation: 0,
     ),
     useMaterial3: true,
   );
 
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [Color(0xFF6366F1), Color(0xFFEC4899)],
+    colors: [brandOrange, Color(0xFFFF8A00)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );

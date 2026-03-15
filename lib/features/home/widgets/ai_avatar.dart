@@ -49,12 +49,12 @@ class _AiAvatarState extends State<AiAvatar> {
              decoration: BoxDecoration(
                shape: BoxShape.circle,
                border: Border.all(
-                 color: const Color(0xFF6366F1).withValues(alpha: 0.5),
+                 color: const Color(0xFFFF5A00).withValues(alpha: 0.5),
                  width: 2,
                ),
                boxShadow: [
                  BoxShadow(
-                   color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                   color: const Color(0xFFFF5A00).withValues(alpha: 0.3),
                    blurRadius: 20,
                    spreadRadius: 2,
                  ),
@@ -66,9 +66,9 @@ class _AiAvatarState extends State<AiAvatar> {
           Container(
             width: 180,
             height: 180,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.black, // Background while loading
+              color: Theme.of(context).colorScheme.surface, // Background while loading
             ),
             clipBehavior: Clip.hardEdge,
             child: _initialized
@@ -82,7 +82,7 @@ class _AiAvatarState extends State<AiAvatar> {
                   )
                 : const Center(
                     child: CircularProgressIndicator(
-                      color: Color(0xFF6366F1),
+                      color: Color(0xFFFF5A00),
                     ),
                   ),
           ),

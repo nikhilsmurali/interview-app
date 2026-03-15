@@ -28,10 +28,10 @@ class GlassContainer extends StatelessWidget {
         child: Container(
           padding: padding ?? const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: bgOpacity),
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(bgOpacity),
             borderRadius: borderRadius ?? BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withValues(alpha: borderOpacity),
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(borderOpacity),
             ),
           ),
           child: child,

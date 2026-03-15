@@ -22,7 +22,7 @@ class ProcessTimeline extends StatelessWidget {
           Text(
             'How it Works',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
                 ),
           ),
@@ -46,10 +46,10 @@ class ProcessTimeline extends StatelessWidget {
                         height: 12,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(0xFF6366F1), // Consistent accent color
+                          color: Theme.of(context).primaryColor, // Consistent accent color
                           boxShadow: [
                             BoxShadow(
-                                color: const Color(0xFF6366F1).withValues(alpha: 0.6),
+                                color: Theme.of(context).primaryColor.withOpacity(0.6),
                                 blurRadius: 4,
                                 spreadRadius: 1,
                               )
@@ -60,7 +60,7 @@ class ProcessTimeline extends StatelessWidget {
                         Container(
                           width: 2,
                           height: 50, // Slightly taller for subtitle space
-                          color: Colors.white10,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
                         ),
                     ],
                   ),
@@ -73,8 +73,8 @@ class ProcessTimeline extends StatelessWidget {
                       children: [
                         Text(
                           step['title']!,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w600,
                             fontSize: 16,
                           ),
@@ -82,8 +82,8 @@ class ProcessTimeline extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           step['subtitle']!,
-                          style: const TextStyle(
-                            color: Colors.white54,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                             fontSize: 13,
                           ),
                         ),

@@ -6,6 +6,8 @@ import 'package:ai_interviewer/features/auth/screens/login_screen.dart';
 import 'package:ai_interviewer/features/auth/screens/signup_screen.dart';
 import 'package:ai_interviewer/features/auth/services/auth_service.dart';
 import 'package:ai_interviewer/features/home/screens/home_screen.dart';
+import 'package:ai_interviewer/features/auth/screens/preferences_onboarding_screen.dart';
+import 'package:ai_interviewer/core/services/firestore_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -39,6 +41,7 @@ class AiInterviewerApp extends StatelessWidget {
               '/login': (context) => const LoginScreen(),
               '/signup': (context) => const SignupScreen(),
               '/home': (context) => const HomeScreen(),
+              '/preferences': (context) => const PreferencesOnboardingScreen(),
             },
           );
         },
