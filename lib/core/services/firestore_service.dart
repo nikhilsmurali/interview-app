@@ -72,6 +72,35 @@ class FirestoreService {
     }
   }
 
+  Future<void> completeInterview({
+    required String userId,
+    required String interviewId,
+    required List<Map<String, dynamic>> exchanges,
+    required double overallScore,
+    required List<String> strongPoints,
+    required List<String> weakAreas,
+    required List<String> improvementTips,
+  }) async {
+    try {
+      await _db
+          .collection('users')
+          .doc(userId)
+          .collection('interviews')
+          .doc(interviewId)
+          .update({
+        'exchanges': exchanges,
+        'overallScore': overallScore,
+        'strongPoints': strongPoints,
+        'weakAreas': weakAreas,
+        'improvementTips': improvementTips,
+        'status': 'completed',
+      });
+    } catch (e) {
+      debugPrint("Error completing interview in Firestore: $e");
+      rethrow;
+    }
+  }
+
 
 
   Future<List<InterviewSession>> getInterviewHistory(String userId) async {

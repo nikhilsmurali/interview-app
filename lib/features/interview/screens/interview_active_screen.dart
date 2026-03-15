@@ -58,6 +58,10 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   bool _isProcessing = false;
   String _currentAnswer = '';
   String _statusText = 'Initializing...';
+  String _introductoryText = '';
+  String _conclusionText = '';
+  bool _isIntroductoryPhase = true;
+  bool _isConclusionPhase = false;
   
   // Follow-up tracking
   final Set<String> _followUpQuestions = {};
@@ -97,8 +101,8 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     );
 
     if (available && mounted) {
-      // Start the interview after a short delay
-      Future.delayed(const Duration(seconds: 1), _askNextQuestion);
+      // Start with introduction
+      Future.delayed(const Duration(seconds: 1), _doSelfIntroduction);
     } else {
       setState(() => _statusText = "Speech recognition unavailable");
     }
@@ -132,6 +136,40 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     final int minutes = seconds ~/ 60;
     final int remainingSeconds = seconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _doSelfIntroduction() async {
+    if (!mounted) return;
+
+    final user = Provider.of<AuthService>(context, listen: false).user;
+    final userName = user?.displayName?.split(' ').first ?? 'candidate';
+    
+    _introductoryText = "Hi $userName, I am your AI interviewer today for the ${widget.role} position at ${widget.companyName}. Let's begin our session.";
+    
+    setState(() {
+      _statusText = "Interviewer Introduction...";
+      _isSpeaking = true;
+      _avatarController.play();
+    });
+
+    try {
+      await _flutterTts.speak(_introductoryText);
+    } catch (e) {
+      debugPrint("Intro TTS Failed: $e");
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSpeaking = false;
+        _avatarController.pause();
+        _isIntroductoryPhase = false;
+        _statusText = "Preparing...";
+      });
+      
+      // Short delay before first question
+      await Future.delayed(const Duration(milliseconds: 800));
+      _askNextQuestion();
+    }
   }
 
   Future<void> _askNextQuestion() async {
@@ -361,36 +399,72 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   
   Future<void> _endInterview() async {
     _timer?.cancel();
-    setState(() => _statusText = "Interview Complete");
     
+    // Calculate aggregate score out of 10
+    double aggregateScore = 0;
+    if (_exchanges.isNotEmpty) {
+      int totalRating = _exchanges.fold(0, (sum, e) => sum + e.rating);
+      aggregateScore = totalRating / _exchanges.length;
+    }
+
+    // Generate conclusion message
+    if (aggregateScore >= 8) {
+      _conclusionText = "Excellent performance! You demonstrated strong technical knowledge and communication skills. Well done.";
+    } else if (aggregateScore >= 6) {
+      _conclusionText = "Good effort today. You have a solid foundation, though there are some areas where you could provide more detail. Great job overall.";
+    } else if (aggregateScore >= 4) {
+      _conclusionText = "Thank you for the session. You showed some good insights, but I'd recommend brushing up on some of the core concepts we discussed today.";
+    } else {
+      _conclusionText = "Thank you for your time. This was a challenging session, and I'd recommend more practice with these types of technical questions. Keep going!";
+    }
+
+    setState(() {
+      _isConclusionPhase = true;
+      _statusText = "Concluding Interview...";
+      _isSpeaking = true;
+      _avatarController.play();
+    });
+
+    try {
+      await _flutterTts.speak(_conclusionText);
+    } catch (e) {
+      debugPrint("Conclusion TTS Failed: $e");
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSpeaking = false;
+        _avatarController.pause();
+        _statusText = "Interview Complete";
+      });
+    }
+
+    // Generate detailed summary
+    final Map<String, dynamic> analysis = await _openAIService.generateOverallAnalysis(
+      _exchanges.map((e) => e.toMap()).toList(),
+      widget.role,
+    );
+
     // Save full session
     final user = Provider.of<AuthService>(context, listen: false).user;
     if (user != null) {
        try {
-         await FirestoreService().updateInterviewExchanges(
-           user.uid,
-           widget.interviewId,
-           _exchanges.map((e) => e.toMap()).toList(),
+         await FirestoreService().completeInterview(
+           userId: user.uid,
+           interviewId: widget.interviewId,
+           exchanges: _exchanges.map((e) => e.toMap()).toList(),
+           overallScore: double.parse(aggregateScore.toStringAsFixed(1)),
+           strongPoints: List<String>.from(analysis['strongPoints'] ?? []),
+           weakAreas: List<String>.from(analysis['weakAreas'] ?? []),
+           improvementTips: List<String>.from(analysis['improvementTips'] ?? []),
          );
-         debugPrint("Interview saved successfully!");
+         debugPrint("Interview completed and saved successfully!");
        } catch (e) {
-         debugPrint("Error saving interview: $e");
-         if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Failed to save interview results")),
-            );
-         }
+         debugPrint("Error saving interview completion: $e");
        }
     }
 
     if (mounted) {
-      // Calculate aggregate score out of 10
-      double aggregateScore = 0;
-      if (_exchanges.isNotEmpty) {
-        int totalRating = _exchanges.fold(0, (sum, e) => sum + e.rating);
-        aggregateScore = totalRating / _exchanges.length;
-      }
-
       final session = InterviewSession(
         id: widget.interviewId,
         userId: user?.uid ?? '',
@@ -402,6 +476,9 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
         exchanges: _exchanges,
         overallScore: double.parse(aggregateScore.toStringAsFixed(1)),
         feedbackSummary: "Interview completed. Score: ${aggregateScore.toStringAsFixed(1)}/10",
+        strongPoints: List<String>.from(analysis['strongPoints'] ?? []),
+        weakAreas: List<String>.from(analysis['weakAreas'] ?? []),
+        improvementTips: List<String>.from(analysis['improvementTips'] ?? []),
       );
       
       Navigator.pushReplacement(
@@ -466,9 +543,13 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
                          borderRadius: BorderRadius.circular(12),
                        ),
                        child: Text(
-                         _currentQuestionIndex < widget.questions.length 
-                            ? widget.questions[_currentQuestionIndex]
-                            : "Interview concluding...",
+                         _isIntroductoryPhase 
+                            ? _introductoryText
+                            : (_isConclusionPhase 
+                               ? _conclusionText
+                               : (_currentQuestionIndex < widget.questions.length 
+                                  ? widget.questions[_currentQuestionIndex]
+                                  : "Interview concluding...")),
                          style: const TextStyle(
                            color: Colors.white, 
                            fontWeight: FontWeight.w500,

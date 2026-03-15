@@ -86,10 +86,12 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
   }
 
   Future<void> _fetchGlobalData() async {
-    const String apiKey = 'pub_11efeff7a6bf426ca9373be97da2e182';
+    const String newsDataApiKey = 'pub_11efeff7a6bf426ca9373be97da2e182';
+    const String serpApiKey = '2aecd7850332d75c37104c0916e9724133c7fac2d2a22448262217f34c21368e';
+    
     try {
       // Fetch Tech News
-      final newsRes = await http.get(Uri.parse('https://newsdata.io/api/1/news?apikey=$apiKey&q=tech&language=en'));
+      final newsRes = await http.get(Uri.parse('https://newsdata.io/api/1/latest?apikey=$newsDataApiKey&language=en&category=technology'));
       if (newsRes.statusCode == 200) {
         final data = jsonDecode(newsRes.body);
         if (data['results'] != null) {
@@ -97,12 +99,12 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
         }
       }
 
-      // Fetch Job related News
-      final jobsRes = await http.get(Uri.parse('https://newsdata.io/api/1/news?apikey=$apiKey&q=tech AND (hiring OR jobs)&language=en'));
+      // Fetch Job related News using SerpApi
+      final jobsRes = await http.get(Uri.parse('https://serpapi.com/search.json?engine=google_jobs&q=coding+technical+jobs&api_key=$serpApiKey'));
       if (jobsRes.statusCode == 200) {
         final data = jsonDecode(jobsRes.body);
-        if (data['results'] != null) {
-          _jobNews = (data['results'] as List).take(5).toList();
+        if (data['jobs_results'] != null) {
+          _jobNews = (data['jobs_results'] as List).take(5).toList();
         }
       }
     } catch (e) {
@@ -444,8 +446,9 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
            const Text("No job news available at the moment.", style: TextStyle(color: Colors.white54)),
         ..._jobNews.map((job) => _buildJobCard(
           title: job['title'] ?? 'No Title',
-          source: job['source_id'] ?? 'Source',
-          url: job['link'],
+          source: job['company_name'] ?? job['via'] ?? 'Source',
+          url: job['share_link'] ?? job['related_links']?[0]?['link'],
+          thumbnail: job['thumbnail'],
         )),
       ],
     );
@@ -482,7 +485,7 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildJobCard({required String title, required String source, String? url}) {
+  Widget _buildJobCard({required String title, required String source, String? url, String? thumbnail}) {
     return GestureDetector(
       onTap: () {
         if (url != null) launchUrl(Uri.parse(url));
@@ -499,7 +502,8 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
           children: [
             CircleAvatar(
               backgroundColor: Colors.white24,
-              child: const Icon(Icons.work, color: Colors.white),
+              backgroundImage: thumbnail != null ? NetworkImage(thumbnail) : null,
+              child: thumbnail == null ? const Icon(Icons.work, color: Colors.white) : null,
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -616,6 +620,14 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
              _userPrefs!.preferredSkills.any((skill) => c.tags.contains('#${skill.toLowerCase()}'));
     }).toList();
 
+    // Filter jobs based on interests/skills
+    final preferredJobs = _jobNews.where((job) {
+      final title = (job['title'] ?? '').toString().toLowerCase();
+      final description = (job['description'] ?? '').toString().toLowerCase();
+      return _userPrefs!.interests.any((interest) => title.contains(interest.toLowerCase()) || description.contains(interest.toLowerCase())) ||
+             _userPrefs!.preferredSkills.any((skill) => title.contains(skill.toLowerCase()) || description.contains(skill.toLowerCase()));
+    }).toList();
+
     return RefreshIndicator(
       onRefresh: () async {
         await _fetchGlobalData();
@@ -636,8 +648,7 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
           ),
           const SizedBox(height: 16),
           
-          if (preferredNews.isEmpty && preferredCommunities.isEmpty)
-             _buildEmptyForYouState(),
+
 
           if (preferredNews.isNotEmpty) ...[
             Text('Trending in ${(_userPrefs!.interests..shuffle()).firstOrNull ?? "your areas"}', 
@@ -661,39 +672,35 @@ class _CommunityScreenState extends State<CommunityScreen> with SingleTickerProv
 
           const SizedBox(height: 24),
           Text(
-            'Explore ${_userPrefs!.employmentType} Opportunities',
+            preferredJobs.isNotEmpty 
+                ? 'Explore Personalized ${_userPrefs!.employmentType} Opportunities'
+                : '',
             style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
-          ..._jobNews.take(3).map((job) => _buildJobCard(
-            title: job['title'] ?? 'No Title',
-            source: job['source_id'] ?? 'Source',
-            url: job['link'],
-          )),
+          if (preferredJobs.isNotEmpty)
+            ...preferredJobs.take(3).map((job) => _buildJobCard(
+              title: job['title'] ?? 'No Title',
+              source: job['company_name'] ?? job['via'] ?? 'Source',
+              url: job['share_link'] ?? job['related_links']?[0]?['link'],
+              thumbnail: job['thumbnail'],
+            ))
+          else if (_jobNews.isNotEmpty)
+            ..._jobNews.take(3).map((job) => _buildJobCard(
+              title: job['title'] ?? 'No Title',
+              source: job['company_name'] ?? job['via'] ?? 'Source',
+              url: job['share_link'] ?? job['related_links']?[0]?['link'],
+              thumbnail: job['thumbnail'],
+            ))
+          else
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text("No job opportunities available right now.", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 14)),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyForYouState() {
-     return Container(
-       padding: const EdgeInsets.all(24),
-       decoration: BoxDecoration(
-         color: Theme.of(context).colorScheme.surface,
-         borderRadius: BorderRadius.circular(16),
-         border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05)),
-       ),
-       child: const Column(
-         children: [
-           Icon(Icons.bubble_chart, size: 48, color: Colors.grey),
-           SizedBox(height: 16),
-           Text(
-             "We're still learning your preferences. Try adding more interests in your profile!",
-             textAlign: TextAlign.center,
-             style: TextStyle(color: Colors.grey),
-           ),
-         ],
-       ),
-     );
-  }
+
 }

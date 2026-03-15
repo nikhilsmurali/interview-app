@@ -182,6 +182,51 @@ Output JSON: {"feedback": "2 sentences", "rating": 1-10, "followUp": "question o
 
     return {"feedback": "Good answer. Let's continue.", "rating": 7, "followUp": null};
   }
+  
+  Future<Map<String, dynamic>> generateOverallAnalysis(List<Map<String, dynamic>> exchanges, String role) async {
+    final transcript = exchanges.map((e) => "Q: ${e['question']}\nA: ${e['answer']}\nFeedback: ${e['feedback']}").join("\n\n");
+    
+    final prompt = '''As a senior technical interviewer, provide a final comprehensive summary for a $role candidate based on this transcript:
+    
+$transcript
+
+Analyze both technical proficiency and non-technical aspects (communication, clarity, speech correctness).
+
+Output exactly in this JSON format:
+{
+  "strongPoints": ["point 1", "point 2"],
+  "weakAreas": ["area 1", "area 2"],
+  "improvementTips": ["Technical: tip 1", "Non-Technical: tip 2"]
+}''';
+
+    try {
+      final response = await http.post(
+        Uri.parse(_groqBaseUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_groqApiKey',
+        },
+        body: jsonEncode({
+          'model': 'llama-3.1-8b-instant',
+          'messages': [{'role': 'user', 'content': prompt}],
+          'response_format': {'type': 'json_object'},
+          'temperature': 0,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(jsonDecode(response.body)['choices'][0]['message']['content']);
+      }
+    } catch (e) {
+      print('Summary generation error: $e');
+    }
+
+    return {
+      "strongPoints": ["Communicative", "Attempted all questions"],
+      "weakAreas": ["Deeper technical knowledge", "Specific concept clarity"],
+      "improvementTips": ["Technical: Study more core concepts", "Non-Technical: Speak more clearly and structure your answers"]
+    };
+  }
 
   List<String> _getFallbackQuestions(String company, String role, int limit) {
     final lowerRole = role.toLowerCase();

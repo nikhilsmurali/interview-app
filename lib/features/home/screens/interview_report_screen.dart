@@ -38,6 +38,12 @@ class InterviewReportScreen extends StatelessWidget {
             _buildSummaryCard(context),
             const SizedBox(height: 32),
 
+            // In-Depth AI Review
+            _buildSectionTitle(context, 'Post-Interview AI Review'),
+            const SizedBox(height: 12),
+            _buildDetailedAnalysisCard(context),
+            const SizedBox(height: 32),
+
             // Q&A Exchanges
             _buildSectionTitle(context, 'Interview Exchanges'),
             const SizedBox(height: 12),
@@ -248,6 +254,99 @@ class InterviewReportScreen extends StatelessWidget {
             Center(child: Text("No data to display.", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3)))),
         ],
       ),
+    );
+  }
+
+  Widget _buildDetailedAnalysisCard(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildAnalysisSection(
+            context,
+            title: 'Strong Points',
+            icon: Icons.check_circle_outline,
+            iconColor: Colors.greenAccent,
+            items: session.strongPoints,
+          ),
+          const Divider(height: 32, color: Colors.white10),
+          _buildAnalysisSection(
+            context,
+            title: 'Areas for Improvement',
+            icon: Icons.error_outline,
+            iconColor: Colors.orangeAccent,
+            items: session.weakAreas,
+          ),
+          const Divider(height: 32, color: Colors.white10),
+          _buildAnalysisSection(
+            context,
+            title: 'Where to Improve',
+            icon: Icons.lightbulb_outline,
+            iconColor: Colors.amberAccent,
+            items: session.improvementTips,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnalysisSection(
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required Color iconColor,
+    required List<String> items,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (items.isEmpty)
+          Text(
+            'No specific data available.',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 13),
+          )
+        else
+          ...items.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 8.0, left: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("• ", style: TextStyle(color: iconColor, fontWeight: FontWeight.bold)),
+                    Expanded(
+                      child: Text(
+                        item,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+      ],
     );
   }
 
