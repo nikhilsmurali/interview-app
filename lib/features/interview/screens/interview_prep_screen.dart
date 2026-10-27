@@ -15,6 +15,7 @@ class InterviewPrepScreen extends StatefulWidget {
   final String companyName;
   final String role;
   final String? resumeText;
+  final String? jobDescription;
   final String difficulty;
 
   const InterviewPrepScreen({
@@ -23,6 +24,7 @@ class InterviewPrepScreen extends StatefulWidget {
     required this.companyName,
     required this.role,
     this.resumeText,
+    this.jobDescription,
     this.difficulty = 'Medium',
   });
 
@@ -80,6 +82,7 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
         widget.role,
         widget.resumeText,
         widget.difficulty,
+        widget.jobDescription,
       );
       debugPrint("Generated Questions: $_questions");
 
@@ -157,7 +160,8 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           children: [
             const SizedBox(height: 40),
             
@@ -213,7 +217,7 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
               ),
             ),
 
-            const Spacer(),
+            const SizedBox(height: 24),
 
             // Status Area
             Container(
@@ -238,12 +242,23 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
                     isReady: _isCameraReady, // Assuming mic perms granted with cam
                   ),
                   const SizedBox(height: 16),
-                   _buildStatusRow(
+                  _buildStatusRow(
                     icon: Icons.psychology,
                     label: 'AI Interviewer',
                     isLoading: _isGeneratingQuestions,
                     isReady: !_isGeneratingQuestions,
                   ),
+                  if (widget.jobDescription != null &&
+                      widget.jobDescription!.trim().isNotEmpty &&
+                      widget.resumeText != null &&
+                      widget.resumeText!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _buildStatusRow(
+                      icon: Icons.compare_arrows_rounded,
+                      label: 'JD vs Resume Gap Analysis Active',
+                      isReady: true,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -279,6 +294,7 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 

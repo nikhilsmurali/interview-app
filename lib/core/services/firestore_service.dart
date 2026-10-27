@@ -5,7 +5,7 @@ import 'package:ai_interviewer/features/home/models/interview_session.dart';
 import 'package:flutter/foundation.dart';
 
 class FirestoreService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
 
   Future<void> saveProfile(CandidateProfile profile) async {
     try {
@@ -80,21 +80,35 @@ class FirestoreService {
     required List<String> strongPoints,
     required List<String> weakAreas,
     required List<String> improvementTips,
+    List<String> studyRoadmap = const [],
+    Map<String, dynamic>? speechMetrics,
+    Map<String, dynamic>? radarScores,
   }) async {
     try {
-      await _db
-          .collection('users')
-          .doc(userId)
-          .collection('interviews')
-          .doc(interviewId)
-          .update({
+      final Map<String, dynamic> updateData = {
         'exchanges': exchanges,
         'overallScore': overallScore,
         'strongPoints': strongPoints,
         'weakAreas': weakAreas,
         'improvementTips': improvementTips,
         'status': 'completed',
-      });
+      };
+      if (studyRoadmap.isNotEmpty) {
+        updateData['studyRoadmap'] = studyRoadmap;
+      }
+      if (speechMetrics != null) {
+        updateData['speechMetrics'] = speechMetrics;
+      }
+      if (radarScores != null) {
+        updateData['radarScores'] = radarScores;
+      }
+
+      await _db
+          .collection('users')
+          .doc(userId)
+          .collection('interviews')
+          .doc(interviewId)
+          .update(updateData);
     } catch (e) {
       debugPrint("Error completing interview in Firestore: $e");
       rethrow;

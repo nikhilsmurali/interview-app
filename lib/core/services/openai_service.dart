@@ -9,7 +9,13 @@ class OpenAIService {
   static const String _geminiApiKey = AppSecrets.geminiApiKey;
   static const String _geminiBaseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$_geminiApiKey';
 
-  Future<List<String>> generateInterviewQuestions(String company, String role, [String? resume, String difficulty = 'Medium']) async {
+  Future<List<String>> generateInterviewQuestions(
+    String company,
+    String role, [
+    String? resume,
+    String difficulty = 'Medium',
+    String? jobDescription,
+  ]) async {
     int numQuestions = 5;
     if (difficulty == 'Medium') numQuestions = 7;
     if (difficulty == 'Hard') numQuestions = 10;
@@ -36,13 +42,32 @@ Rules:
 - Output ONLY a numbered list of $numQuestions questions. No extra text.
 ''';
 
+    if (jobDescription != null && jobDescription.trim().isNotEmpty) {
+      basePrompt += '\n\nTarget Job Description:\n$jobDescription';
+    }
+
     if (resume != null && resume.trim().isNotEmpty) {
-      basePrompt += '\nCandidate Resume:\n$resume';
+      basePrompt += '\n\nCandidate Resume / CV:\n$resume';
+    }
+
+    if (jobDescription != null && jobDescription.trim().isNotEmpty && resume != null && resume.trim().isNotEmpty) {
+      basePrompt += '''
+
+MANDATORY RESUME VS. JOB DESCRIPTION GAP ANALYSIS:
+1. Cross-reference the Candidate's Resume against the Target Job Description.
+2. Identify critical skills, technologies, frameworks, and responsibilities demanded in the Job Description that are missing or weakly evidenced on their CV.
+3. Dedicate at least 2 or 3 questions specifically to probing these GAP areas to test if the candidate possesses practical working ability beyond what is explicitly listed.
+4. Dedicate 2 questions to deep dive into the projects and accomplishments claimed on their resume to verify authenticity and depth.
+''';
+    } else if (resume != null && resume.trim().isNotEmpty) {
+      basePrompt += '\n\nPERSONALIZATION:\nTailor at least 2-3 questions specifically to the candidate\'s past projects, technologies, and achievements listed on their resume.';
+    } else if (jobDescription != null && jobDescription.trim().isNotEmpty) {
+      basePrompt += '\n\nJOB DESCRIPTION FOCUS:\nEnsure questions heavily test the exact qualifications, tools, and technical requirements listed in the Job Description.';
     }
 
     // --- STEP 1: Try Groq ---
     try {
-      print('>>> [API] Calling Groq (Llama 3.3-70B)...');
+      print('>>> [API] Calling Groq (GPT-OSS 120B)...');
       final response = await http.post(
         Uri.parse(_groqBaseUrl),
         headers: {
@@ -50,7 +75,7 @@ Rules:
           'Authorization': 'Bearer $_groqApiKey',
         },
         body: jsonEncode({
-          'model': 'llama-3.3-70b-versatile',
+          'model': 'openai/gpt-oss-120b',
           'messages': [{'role': 'user', 'content': basePrompt}],
           'temperature': 0.7,
         }),
@@ -166,7 +191,7 @@ Output JSON: {"feedback": "2 sentences", "rating": 1-10, "followUp": "question o
           'Authorization': 'Bearer $_groqApiKey',
         },
         body: jsonEncode({
-          'model': 'llama-3.1-8b-instant',
+          'model': 'openai/gpt-oss-120b',
           'messages': [{'role': 'user', 'content': prompt}],
           'response_format': {'type': 'json_object'},
           'temperature': 0,
@@ -186,17 +211,28 @@ Output JSON: {"feedback": "2 sentences", "rating": 1-10, "followUp": "question o
   Future<Map<String, dynamic>> generateOverallAnalysis(List<Map<String, dynamic>> exchanges, String role) async {
     final transcript = exchanges.map((e) => "Q: ${e['question']}\nA: ${e['answer']}\nFeedback: ${e['feedback']}").join("\n\n");
     
-    final prompt = '''As a senior technical interviewer, provide a final comprehensive summary for a $role candidate based on this transcript:
+    final prompt = '''As a senior technical interviewer and hiring committee lead, provide a comprehensive final performance evaluation for a $role candidate based on this interview transcript:
     
 $transcript
 
-Analyze both technical proficiency and non-technical aspects (communication, clarity, speech correctness).
-
-Output exactly in this JSON format:
+Evaluate performance across both technical depth and communication articulation.
+Output strictly in this JSON format:
 {
-  "strongPoints": ["point 1", "point 2"],
-  "weakAreas": ["area 1", "area 2"],
-  "improvementTips": ["Technical: tip 1", "Non-Technical: tip 2"]
+  "strongPoints": ["Key strength 1 with specific evidence", "Key strength 2"],
+  "weakAreas": ["Constructive gap 1 with context", "Constructive gap 2"],
+  "improvementTips": ["Technical: specific architectural or coding recommendation", "Communication: vocal cadence or structure recommendation"],
+  "studyRoadmap": [
+    "Milestone 1: Deep dive into core algorithms and edge cases relevant to $role",
+    "Milestone 2: Practice system scalability (caching, load balancing, SPOF analysis)",
+    "Milestone 3: Rehearse behavioral STAR-method articulation to eliminate filler words"
+  ],
+  "radarScores": {
+    "coreTechnical": 8.0,
+    "problemSolving": 7.5,
+    "communication": 8.5,
+    "systemArchitecture": 7.0,
+    "confidence": 8.0
+  }
 }''';
 
     try {
@@ -207,10 +243,10 @@ Output exactly in this JSON format:
           'Authorization': 'Bearer $_groqApiKey',
         },
         body: jsonEncode({
-          'model': 'llama-3.1-8b-instant',
+          'model': 'openai/gpt-oss-120b',
           'messages': [{'role': 'user', 'content': prompt}],
           'response_format': {'type': 'json_object'},
-          'temperature': 0,
+          'temperature': 0.1,
         }),
       ).timeout(const Duration(seconds: 15));
 
@@ -222,9 +258,148 @@ Output exactly in this JSON format:
     }
 
     return {
-      "strongPoints": ["Communicative", "Attempted all questions"],
-      "weakAreas": ["Deeper technical knowledge", "Specific concept clarity"],
-      "improvementTips": ["Technical: Study more core concepts", "Non-Technical: Speak more clearly and structure your answers"]
+      "strongPoints": ["Communicative and engaged throughout", "Demonstrated foundational problem-solving capability"],
+      "weakAreas": ["Deeper technical edge-case analysis", "Specific architectural tradeoff clarity"],
+      "improvementTips": ["Technical: Study concurrency and distributed caching paradigms", "Communication: State high-level overview before diving into implementation details"],
+      "studyRoadmap": [
+        "Milestone 1: Review foundational data structures and standard algorithm complexities",
+        "Milestone 2: Design distributed backend and caching topologies",
+        "Milestone 3: Practice mock interviews focusing on concise, structured delivery"
+      ],
+      "radarScores": {
+        "coreTechnical": 7.5,
+        "problemSolving": 7.8,
+        "communication": 8.0,
+        "systemArchitecture": 7.2,
+        "confidence": 7.9
+      }
+    };
+  }
+
+  Future<Map<String, dynamic>> evaluateCodeSolution({
+    required String question,
+    required String code,
+    required String language,
+  }) async {
+    final prompt = '''As a principal software engineer and coding interviewer, evaluate the candidate's code submission for the technical interview.
+
+Interview Question/Problem:
+$question
+
+Programming Language:
+$language
+
+Candidate's Code Solution:
+```$language
+$code
+```
+
+Analyze the code rigorously.
+Return a valid JSON object matching this schema:
+{
+  "timeComplexity": "O(N log N)",
+  "spaceComplexity": "O(N)",
+  "rating": 8.5,
+  "summary": "Clear, concise 1-2 sentence overall summary of the solution quality.",
+  "strengths": ["Clean idiomatic syntax", "Optimal sorting approach"],
+  "edgeCasesAndBugs": ["Fails on empty array input", "Integer overflow for large values"],
+  "optimizationTips": "Consider two-pointer technique to achieve O(N) linear time."
+}''';
+
+    try {
+      final response = await http.post(
+        Uri.parse(_groqBaseUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_groqApiKey',
+        },
+        body: jsonEncode({
+          'model': 'openai/gpt-oss-120b',
+          'messages': [{'role': 'user', 'content': prompt}],
+          'response_format': {'type': 'json_object'},
+          'temperature': 0.2,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(jsonDecode(response.body)['choices'][0]['message']['content']);
+      }
+    } catch (e) {
+      print('evaluateCodeSolution error: $e');
+    }
+
+    return {
+      "timeComplexity": "O(N)",
+      "spaceComplexity": "O(1)",
+      "rating": 7.5,
+      "summary": "Valid implementation with standard algorithmic logic.",
+      "strengths": ["Clear syntax and readable variable naming", "Correct core algorithm structure"],
+      "edgeCasesAndBugs": ["Check boundaries for empty or extreme inputs"],
+      "optimizationTips": "Analyze if auxiliary memory can be further reduced."
+    };
+  }
+
+  Future<Map<String, dynamic>> evaluateSystemDesign({
+    required String question,
+    required List<Map<String, dynamic>> components,
+    required List<Map<String, dynamic>> connections,
+  }) async {
+    final componentsStr = components.map((c) => "- ${c['name']} (${c['type']})").join("\n");
+    final connectionsStr = connections.map((c) => "- ${c['from']} -> ${c['to']} [Protocol/Flow: ${c['label'] ?? 'HTTPS'}]").join("\n");
+
+    final prompt = '''As a Staff Infrastructure & Systems Architect, review the candidate's interactive system design whiteboard architecture.
+
+Interview Scenario / Problem:
+$question
+
+Architectural Components Placed:
+$componentsStr
+
+Data Flow & Service Connections:
+$connectionsStr
+
+Provide a rigorous architectural assessment.
+Return a valid JSON object matching this schema:
+{
+  "rating": 8.0,
+  "verdict": "Production-Ready / Feasible Architecture",
+  "summary": "Concise 1-2 sentence review of the architecture topology.",
+  "scalabilityScore": "High / Medium",
+  "bottlenecks": ["Single primary database without read replicas", "Potential cache thundering herd"],
+  "strengths": ["Appropriate placement of API Gateway and Load Balancer", "Asynchronous decoupling via message queue"],
+  "recommendations": ["Introduce read replicas for DB", "Add rate limiting on API Gateway"]
+}''';
+
+    try {
+      final response = await http.post(
+        Uri.parse(_groqBaseUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_groqApiKey',
+        },
+        body: jsonEncode({
+          'model': 'openai/gpt-oss-120b',
+          'messages': [{'role': 'user', 'content': prompt}],
+          'response_format': {'type': 'json_object'},
+          'temperature': 0.2,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(jsonDecode(response.body)['choices'][0]['message']['content']);
+      }
+    } catch (e) {
+      print('evaluateSystemDesign error: $e');
+    }
+
+    return {
+      "rating": 7.0,
+      "verdict": "Feasible Architecture with Tradeoffs",
+      "summary": "Good separation of concerns and clear data flow between tiers.",
+      "scalabilityScore": "Medium",
+      "bottlenecks": ["Monitor database write saturation", "Ensure cache invalidation consistency"],
+      "strengths": ["Tiered caching and load balancing", "Clean component decoupling"],
+      "recommendations": ["Consider adding multi-region failover and read replicas"]
     };
   }
 
