@@ -69,6 +69,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   String _conclusionText = '';
   bool _isIntroductoryPhase = true;
   bool _isConclusionPhase = false;
+  String? _transitionAnnouncement;
   
   // Follow-up tracking
   final Set<String> _followUpQuestions = {};
@@ -462,29 +463,44 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
 
     if (!mounted) return;
 
-    setState(() {
-      _isListening = false;
-      _isSpeaking = false;
-      _avatarController.pause();
-      _isProcessing = true;
-      _statusText = "Skipping to next question...";
-    });
-
-    // 1. Store a skipped exchange so it appears in the report
     final currentQuestion = _currentQuestionIndex < widget.questions.length
         ? widget.questions[_currentQuestionIndex]
         : "Question";
+    const skipFeedback = "That's completely okay. Let's move on to the next question.";
+
+    // 1. Store a skipped exchange so it appears in the final scorecard
     final exchange = InterviewExchange(
       question: currentQuestion,
       answer: "Question skipped by candidate (Don't Know).",
-      feedback: "Candidate passed on this question.",
+      feedback: skipFeedback,
       rating: 0,
       timestamp: DateTime.now(),
     );
     _exchanges.add(exchange);
 
-    // 2. Immediately advance to the next question with zero delay
+    // 2. Announce verbally and display on interviewer card
     setState(() {
+      _isListening = false;
+      _isSpeaking = true;
+      _isProcessing = true;
+      _transitionAnnouncement = skipFeedback;
+      _statusText = "Moving to next question...";
+    });
+    _avatarController.play();
+
+    try {
+      await _speakText(skipFeedback);
+    } catch (e) {
+      debugPrint("Skip acknowledgment speech error: $e");
+    }
+
+    if (!mounted) return;
+
+    // 3. Advance to the next question
+    setState(() {
+      _transitionAnnouncement = null;
+      _isSpeaking = false;
+      _avatarController.pause();
       _isProcessing = false;
       _currentAnswer = '';
       _currentQuestionIndex++;
@@ -1084,13 +1100,14 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   }
 
   Widget _buildAIAvatarCard({required bool isWideScreen}) {
-    final questionText = _isIntroductoryPhase
-        ? _introductoryText
-        : (_isConclusionPhase
-            ? _conclusionText
-            : (_currentQuestionIndex < widget.questions.length
-                ? widget.questions[_currentQuestionIndex]
-                : "Interview concluding..."));
+    final questionText = _transitionAnnouncement ??
+        (_isIntroductoryPhase
+            ? _introductoryText
+            : (_isConclusionPhase
+                ? _conclusionText
+                : (_currentQuestionIndex < widget.questions.length
+                    ? widget.questions[_currentQuestionIndex]
+                    : "Interview concluding...")));
 
     return Container(
       decoration: BoxDecoration(
