@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:ai_interviewer/core/secrets/eleven_labs_secrets.dart';
@@ -28,9 +29,15 @@ class ElevenLabsService {
         .trim();
   }
 
-  Future<void> speak(String text) async {
+  /// Speaks [text] through ElevenLabs.
+  ///
+  /// [isSuperseded] is polled at each async step so that an utterance which has
+  /// been replaced by a newer one aborts instead of talking over it.
+  Future<void> speak(String text, {bool Function()? isSuperseded}) async {
     final cleanText = sanitizeText(text);
     if (cleanText.isEmpty) return;
+
+    bool cancelled() => isSuperseded?.call() ?? false;
 
     try {
       final url = Uri.parse(
@@ -57,6 +64,8 @@ class ElevenLabsService {
         }),
       ).timeout(const Duration(seconds: 12));
 
+      if (cancelled()) return;
+
       if (response.statusCode == 200) {
         final bytes = response.bodyBytes;
         final audioSource = AudioSource.uri(
@@ -66,16 +75,29 @@ class ElevenLabsService {
         await _audioPlayer.stop();
         await _audioPlayer.setVolume(1.0); // Enforce constant 100% volume
         await _audioPlayer.setAudioSource(audioSource);
+
+        if (cancelled()) {
+          await _audioPlayer.stop();
+          return;
+        }
+
         await _audioPlayer.play();
-        // Wait until playback completes with timeout safety
-        await _audioPlayer.playerStateStream.firstWhere(
-          (state) =>
-              state.processingState == ProcessingState.completed ||
-              (!state.playing && state.processingState == ProcessingState.ready && _audioPlayer.position >= (_audioPlayer.duration ?? Duration.zero)),
-        ).timeout(const Duration(seconds: 15), onTimeout: () {
-          debugPrint("ElevenLabs playback wait completed/timed out");
-          return _audioPlayer.playerState;
-        });
+
+        // Wait for actual completion. The previous predicate also matched the
+        // transient "ready but not playing" state, which returned immediately
+        // while the MP3 was still audible.
+        final maxWait =
+            (_audioPlayer.duration ?? const Duration(minutes: 3)) +
+                const Duration(seconds: 5);
+        try {
+          await _audioPlayer.playerStateStream
+              .firstWhere((state) =>
+                  state.processingState == ProcessingState.completed)
+              .timeout(maxWait);
+        } on TimeoutException {
+          debugPrint("ElevenLabs playback timed out; stopping audio");
+          await _audioPlayer.stop();
+        }
       } else {
         throw Exception('ElevenLabs API Error: ${response.statusCode} - ${response.body}');
       }

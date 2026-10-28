@@ -64,6 +64,15 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   bool _isListening = false;
   bool _isProcessing = false;
   String _currentAnswer = '';
+  // Chrome ends the recognizer every few seconds, and each new session reports
+  // only the words spoken inside that session. Keep the transcript as
+  // "committed" (already spoken) + "session" (current recognizer run) so a
+  // pause never wipes out what the candidate already said.
+  String _committedAnswer = '';
+  String _sessionAnswer = '';
+
+  /// How long the candidate must stay silent before the answer is submitted.
+  static const Duration _silenceBeforeSubmit = Duration(seconds: 5);
   String _statusText = 'Initializing...';
   String _introductoryText = '';
   String _conclusionText = '';
@@ -76,6 +85,16 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   int _followUpsForCurrentMainQuestion = 0;
   Timer? _timer;
   int _secondsElapsed = 0;
+
+  // Speech recognition lifecycle. Chrome silently ends its recognizer after a
+  // pause / network blip, so these keep the mic alive and decide when the
+  // candidate has actually finished answering.
+  bool _startingRecognition = false;
+  bool _recognitionFailed = false;
+  int _startAttempts = 0;
+  int _emptySessions = 0;
+  Timer? _silenceTimer;
+  Timer? _restartTimer;
 
   // Split-screen & speech metrics tracking
   String? _activeSplitTool; // 'code', 'whiteboard', or null
@@ -105,20 +124,48 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     // This MUST be set once at initialization.
     await _flutterTts.awaitSpeakCompletion(true);
 
+    // Chrome resolves the default voice asynchronously and can pick a male OS
+    // voice on later utterances, so pin one consistent female en-US voice.
+    if (kIsWeb) {
+      await _pinConsistentWebVoice();
+    }
+
     bool available = await _speech.initialize(
       onStatus: (status) {
         debugPrint('STT Status: $status');
-        // Auto-submit after candidate finishes speaking and silence is detected
-        if (status == 'done' && mounted && _isListening && _currentAnswer.trim().length >= 8 && !_isProcessing) {
-          _stopListeningAndProcess();
+        if (!mounted || !_isListening || _isProcessing || _recognitionFailed) {
+          return;
+        }
+        // Chrome ends recognition whenever it feels like it (a short pause, a
+        // network blip, or one finished phrase). Previously only 'done' was
+        // handled and it merely submitted, so a short/failed utterance left the
+        // mic dead while the UI still claimed to be listening. Keep it alive;
+        // the silence timer decides when the answer is actually finished.
+        if (status == 'done' || status == 'notListening') {
+          if (status == 'done') {
+            // A run that captured nothing means Chrome is flapping; back the
+            // restart off instead of hammering start().
+            _emptySessions =
+                _sessionAnswer.trim().isEmpty ? _emptySessions + 1 : 0;
+          }
+          _armSilenceTimer();
+          _scheduleRecognitionRestart();
         }
       },
       onError: (error) {
-        debugPrint('STT Error: $error');
-        if (mounted && error.errorMsg.contains('not-allowed')) {
+        debugPrint('STT Error: ${error.errorMsg} (permanent: ${error.permanent})');
+        if (!mounted) return;
+        final msg = error.errorMsg.toLowerCase();
+        if (msg.contains('not-allowed') || msg.contains('service-not-allowed')) {
           setState(() {
-            _statusText = "Microphone blocked in Chrome! Please allow mic access in URL bar.";
+            _recognitionFailed = true;
+            _isListening = false;
+            _statusText = "Microphone blocked. Allow mic access in the browser's URL bar, then tap the mic button.";
           });
+        } else if (msg.contains('no-speech') || msg.contains('aborted')) {
+          // Normal on Chrome; the status handler restarts the recognizer.
+        } else {
+          setState(() => _statusText = "Speech recognition error: ${error.errorMsg}");
         }
       },
     );
@@ -189,47 +236,183 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _speakText(String text) async {
-    final cleanText = ElevenLabsService.sanitizeText(text);
-    if (cleanText.isEmpty) return;
+  /// Live captions always show the most recent words, so a long answer keeps
+  /// updating on screen instead of staying stuck on the opening sentence.
+  String get _liveCaption {
+    final text = _currentAnswer.trim();
+    const maxChars = 220;
+    if (text.length <= maxChars) return text;
+    return '…${text.substring(text.length - maxChars)}';
+  }
 
+  /// Bumped for every new utterance. Any speech started by an older
+  /// generation aborts as soon as it notices it has been superseded, which
+  /// prevents two voices (studio + device) from talking at the same time.
+  int _speechGeneration = 0;
+
+  /// Upper bound for how long an utterance is allowed to take. Long lines get
+  /// more time, but every engine is always force-stopped when the budget runs
+  /// out so a stuck engine can never bleed into the next sentence.
+  Duration _speechBudget(String text) {
+    final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    return Duration(seconds: 12 + (words * 0.7).ceil());
+  }
+
+  Future<void> _silenceAllSpeech() async {
     try {
       await _elevenLabsService.stop();
     } catch (_) {}
     try {
       await _flutterTts.stop();
     } catch (_) {}
+  }
+
+  /// Chrome exposes its voice list asynchronously, so the default voice can
+  /// change between utterances (which sounds like the interviewer randomly
+  /// switching to a male voice). Pin a single female en-US voice once.
+  Future<void> _pinConsistentWebVoice() async {
+    const preferred = [
+      'Google US English',
+      'Microsoft Aria Online (Natural) - English (United States)',
+      'Microsoft Zira - English (United States)',
+      'Samantha',
+    ];
+
+    try {
+      List<dynamic> voices = const [];
+      for (var attempt = 0; attempt < 5 && voices.isEmpty; attempt++) {
+        final result = await _flutterTts.getVoices;
+        if (result is List) voices = result;
+        if (voices.isEmpty) {
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+        }
+      }
+      if (voices.isEmpty) return;
+
+      for (final name in preferred) {
+        final match = voices.firstWhere(
+          (v) =>
+              v is Map &&
+              (v['name'] as String?)?.toLowerCase() == name.toLowerCase(),
+          orElse: () => null,
+        );
+        if (match != null) {
+          await _flutterTts.setVoice({
+            'name': match['name'] as String,
+            'locale': (match['locale'] ?? 'en-US') as String,
+          });
+          debugPrint("TTS voice pinned to ${match['name']}");
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint("Could not pin TTS voice: $e");
+    }
+  }
+
+  Future<void> _speakWithDeviceVoice(
+    String text,
+    Duration budget,
+    bool Function() isSuperseded,
+  ) async {
+    // On web the plugin's completion future is unreliable (its 'error' handler
+    // drops the completer without completing it), so bound the wait by an
+    // estimate of how long the sentence takes to read instead.
+    final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    final estimated =
+        Duration(milliseconds: (words * 380).clamp(1200, 30000));
+
+    try {
+      await _flutterTts.setVolume(1.0);
+      await _flutterTts.setSpeechRate(kIsWeb ? 0.95 : 0.5);
+      await _flutterTts.setPitch(1.0);
+      if (isSuperseded()) return;
+
+      // flutter_tts_web's stop() pauses, then cancels 500 ms later, and only
+      // flips its state to "stopped" when that cancel event arrives. Speaking
+      // before then is silently ignored (and the late cancel kills the new
+      // utterance), so let the plugin settle on web.
+      if (kIsWeb) {
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+        if (isSuperseded()) return;
+      }
+
+      final speaking = _flutterTts.speak(text);
+
+      if (!kIsWeb) {
+        await speaking.timeout(budget);
+        return;
+      }
+
+      final finishedOnItsOwn = await Future.any<bool>([
+        speaking.then((_) => true).catchError((_) => true),
+        Future<void>.delayed(estimated).then((_) => false),
+      ]);
+
+      if (!finishedOnItsOwn) {
+        try {
+          await _flutterTts.stop();
+        } catch (_) {}
+      }
+    } catch (ttsErr) {
+      debugPrint("Device TTS Error: $ttsErr");
+      try {
+        await _flutterTts.stop();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _speakText(String text) async {
+    final cleanText = ElevenLabsService.sanitizeText(text);
+    if (cleanText.isEmpty) return;
+
+    // Never transcribe the interviewer's own voice: stop the mic while speaking.
+    if (_isListening) {
+      _silenceTimer?.cancel();
+      _restartTimer?.cancel();
+      setState(() => _isListening = false);
+    }
+    if (_speech.isListening) {
+      try {
+        await _speech.stop();
+      } catch (_) {}
+    }
+
+    final int generation = ++_speechGeneration;
+    bool isSuperseded() => !mounted || generation != _speechGeneration;
+
+    // Cancel anything already playing before starting a new utterance.
+    await _silenceAllSpeech();
+    if (isSuperseded()) return;
+
+    final budget = _speechBudget(cleanText);
 
     // 1. Instant Local Device Voice (0ms network roundtrip latency)
     if (_useInstantDeviceVoice) {
-      try {
-        await _flutterTts.setVolume(1.0);
-        await _flutterTts.setSpeechRate(kIsWeb ? 0.95 : 0.5);
-        await _flutterTts.setPitch(1.0);
-        await _flutterTts.speak(cleanText).timeout(const Duration(seconds: 15));
-      } catch (ttsErr) {
-        debugPrint("Local device TTS Error: $ttsErr");
-      }
+      await _speakWithDeviceVoice(cleanText, budget, isSuperseded);
       return;
     }
 
     // 2. Try ElevenLabs for ultra-crisp studio voice with optimize_streaming_latency=3
     try {
-      await _elevenLabsService.speak(cleanText).timeout(const Duration(seconds: 15));
+      await _elevenLabsService
+          .speak(cleanText, isSuperseded: isSuperseded)
+          .timeout(budget);
       return;
+    } on TimeoutException {
+      debugPrint("ElevenLabs exceeded its speech budget - stopping studio audio");
     } catch (e) {
-      debugPrint("ElevenLabs failed or timed out: $e. Falling back to device TTS.");
+      debugPrint("ElevenLabs failed: $e. Falling back to device TTS.");
     }
 
-    // 3. Fallback to FlutterTts
-    try {
-      await _flutterTts.setVolume(1.0);
-      await _flutterTts.setSpeechRate(kIsWeb ? 0.95 : 0.5);
-      await _flutterTts.setPitch(1.0);
-      await _flutterTts.speak(cleanText).timeout(const Duration(seconds: 15));
-    } catch (ttsErr) {
-      debugPrint("TTS Fallback Failed: $ttsErr");
-    }
+    if (isSuperseded()) return;
+
+    // 3. Fallback to FlutterTts. Silence the studio player *first*: the old
+    //    15s timeout used to fire while the MP3 was still audible, which is
+    //    exactly what made a second (male) device voice start mid-sentence.
+    await _elevenLabsService.stop();
+
+    await _speakWithDeviceVoice(cleanText, budget, isSuperseded);
   }
 
   Future<void> _doSelfIntroduction() async {
@@ -302,50 +485,155 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
          _statusText = "Listening...";
          _isListening = true;
       });
+      _resetTranscript();
       _startListening();
     }
   }
 
-  void _startListening() async {
-    if (!mounted) return;
+  /// Joins a new recognition chunk onto the transcript accumulated so far.
+  /// Handles the case where Chrome replays an already-seen chunk.
+  String _mergeTranscript(String committed, String session) {
+    final a = committed.trim();
+    final b = session.trim();
+    if (a.isEmpty) return b;
+    if (b.isEmpty) return a;
+    if (a.endsWith(b)) return a; // stale duplicate of the last chunk
+    if (b.contains(a)) return b; // session already includes the committed text
+    return '$a $b';
+  }
 
-    // Stop any existing session just in case
-    if (_speech.isListening) {
-      await _speech.stop();
-    }
-    
-    if (!mounted) return;
-    
-    _answeringStartTime = DateTime.now();
+  /// Called when a recognizer session ends: keep its text so the next session
+  /// continues the answer instead of starting over.
+  void _commitSessionAnswer() {
+    if (_sessionAnswer.trim().isEmpty) return;
+    _committedAnswer = _currentAnswer.trim();
+    _sessionAnswer = '';
+  }
 
-    await _speech.listen(
-      onResult: (result) {
-        if (mounted) {
-          setState(() {
-            _currentAnswer = result.recognizedWords;
-          });
+  void _resetTranscript() {
+    _committedAnswer = '';
+    _sessionAnswer = '';
+    _currentAnswer = '';
+    _emptySessions = 0;
+    _startAttempts = 0;
+  }
+
+  /// Submits once the candidate has been quiet for a few seconds with a real
+  /// answer in hand. Chrome ignores `pauseFor`, so this replaces the plugin's
+  /// timer.
+  void _armSilenceTimer() {
+    _silenceTimer?.cancel();
+    if (!mounted || !_isListening || _isProcessing) return;
+    _silenceTimer = Timer(_silenceBeforeSubmit, () {
+      if (!mounted || !_isListening || _isProcessing) return;
+      if (_currentAnswer.trim().length >= 8) {
+        _stopListeningAndProcess();
+      } else {
+        // Nothing usable captured yet - make sure the mic is still running.
+        if (!_speech.isListening) _scheduleRecognitionRestart();
+      }
+    });
+  }
+
+  /// Single debounced restart. Chrome closes its recognizer every couple of
+  /// seconds on its own; queueing several restarts is what produced the
+  /// "recognition has already started" churn.
+  void _scheduleRecognitionRestart({Duration? delay}) {
+    if (!mounted || !_isListening || _isProcessing || _recognitionFailed) return;
+    _restartTimer?.cancel();
+    _restartTimer = Timer(
+      delay ??
+          (_emptySessions >= 2
+              ? const Duration(milliseconds: 1500)
+              : const Duration(milliseconds: 500)),
+      () {
+        if (!mounted || !_isListening || _isProcessing || _recognitionFailed) {
+          return;
         }
+        _startListening();
       },
-      localeId: "en_US",
-      listenFor: const Duration(seconds: 120),
-      pauseFor: const Duration(seconds: 3), // Auto-submits 3s after candidate finishes speaking
-      partialResults: true,
-      cancelOnError: false, // very important on Android
-      listenMode: stt.ListenMode.dictation,
     );
   }
 
-  Future<void> _stopListeningAndProcess() async {
-    await _speech.stop();
-    if (_answeringStartTime != null) {
-      _totalCandidateSpeakingSeconds += DateTime.now().difference(_answeringStartTime!).inSeconds;
-      _answeringStartTime = null;
+  Future<void> _startListening() async {
+    if (!mounted || _recognitionFailed || _isProcessing) return;
+    // Already recording - nothing to do.
+    if (_speech.isListening) return;
+    if (_startingRecognition) return;
+
+    _restartTimer?.cancel();
+    _startingRecognition = true;
+    _silenceTimer?.cancel();
+    try {
+      if (!mounted) return;
+
+      _answeringStartTime ??= DateTime.now();
+
+      // Everything heard so far belongs to the answer; a fresh recognizer
+      // session must append to it rather than overwrite it.
+      _commitSessionAnswer();
+
+      await _speech.listen(
+        onResult: (result) {
+          if (!mounted) return;
+          final words = result.recognizedWords.trim();
+          if (words.isEmpty) return;
+          setState(() {
+            _sessionAnswer = words;
+            _currentAnswer = _mergeTranscript(_committedAnswer, _sessionAnswer);
+          });
+          _armSilenceTimer();
+        },
+        localeId: "en_US",
+        listenFor: const Duration(seconds: 120),
+        pauseFor: const Duration(seconds: 3), // honoured on mobile; web uses _armSilenceTimer
+        partialResults: true,
+        cancelOnError: false, // very important on Android
+        listenMode: stt.ListenMode.dictation,
+      );
+      _startAttempts = 0;
+    } catch (e) {
+      debugPrint("STT start failed: $e");
+      _startingRecognition = false;
+      _startAttempts++;
+      _scheduleRecognitionRestart(
+        delay: Duration(milliseconds: 500 * _startAttempts.clamp(1, 6)),
+      );
+      return;
+    } finally {
+      _startingRecognition = false;
     }
+  }
+
+  /// Re-enables the mic after a permission/error block and starts listening.
+  void _retryListening() {
+    _recognitionFailed = false;
+    _startAttempts = 0;
+    _emptySessions = 0;
+    if (!mounted) return;
+    setState(() => _isListening = true);
+    _startListening();
+  }
+
+  Future<void> _stopListeningAndProcess() async {
+    // Flip the flags before stopping so the status callbacks don't restart
+    // recognition behind our back.
+    _silenceTimer?.cancel();
+    _restartTimer?.cancel();
+    _commitSessionAnswer();
     setState(() {
       _isListening = false;
       _isProcessing = true;
       _statusText = "Analyzing answer...";
     });
+    try {
+      await _speech.stop();
+    } catch (_) {}
+
+    if (_answeringStartTime != null) {
+      _totalCandidateSpeakingSeconds += DateTime.now().difference(_answeringStartTime!).inSeconds;
+      _answeringStartTime = null;
+    }
 
     if (_currentAnswer.trim().isEmpty || _currentAnswer.trim().length < 8) {
       // Short-circuit: The user didn't say anything meaningful, ask them to repeat
@@ -364,10 +652,13 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       if (!mounted) return;
       setState(() {
         _isSpeaking = false;
+        _isProcessing = false;
         _avatarController.pause();
         _statusText = "Listening...";
         _isListening = true;
+        _currentAnswer = ''; // drop the unusable fragment before re-listening
       });
+      _resetTranscript();
       _startListening();
       return; // Do not increment question index or save exchange
     }
@@ -441,9 +732,9 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     // Move to next
     setState(() {
       _isProcessing = false;
-      _currentAnswer = '';
       _currentQuestionIndex++;
     });
+    _resetTranscript();
 
     _askNextQuestion();
   }
@@ -451,6 +742,10 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   Future<void> _skipQuestion() async {
     if (_isProcessing) return;
 
+    // Stop recognition before awaiting anything that fires status callbacks.
+    _silenceTimer?.cancel();
+    _restartTimer?.cancel();
+    _isListening = false;
     try {
       await _speech.stop();
     } catch (_) {}
@@ -502,9 +797,9 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
       _isSpeaking = false;
       _avatarController.pause();
       _isProcessing = false;
-      _currentAnswer = '';
       _currentQuestionIndex++;
     });
+    _resetTranscript();
 
     _askNextQuestion();
   }
@@ -561,8 +856,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
                       icon: const Icon(Icons.close, color: Colors.white54),
                       onPressed: () {
                         Navigator.pop(modalContext);
-                        _startListening();
-                        setState(() => _isListening = true);
+                        _retryListening();
                       },
                     ),
                   ],
@@ -603,8 +897,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
                       child: OutlinedButton.icon(
                         onPressed: () {
                           Navigator.pop(modalContext);
-                          _startListening();
-                          setState(() => _isListening = true);
+                          _retryListening();
                         },
                         icon: const Icon(Icons.mic, size: 18),
                         label: const Text("Use Voice"),
@@ -853,6 +1146,9 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _silenceTimer?.cancel();
+    _restartTimer?.cancel();
+    _speechGeneration++; // Prevent any in-flight utterance from resuming
     _cameraController.dispose();
     _avatarController.dispose();
     _elevenLabsService.dispose();
@@ -1008,6 +1304,8 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
               setState(() {
                 _useInstantDeviceVoice = !_useInstantDeviceVoice;
               });
+              _speechGeneration++; // Abort whatever is currently being spoken
+              _silenceAllSpeech();
               ScaffoldMessenger.of(context).clearSnackBars();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -1459,14 +1757,17 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
                   const SizedBox(height: 8),
                   Text(
                     _currentAnswer.isNotEmpty
-                        ? _currentAnswer
+                        ? _liveCaption
                         : (_isListening
                             ? "Listening to your answer... Speak naturally, or tap 'Type', 'Code', or 'Board' above."
-                            : "Waiting for question to conclude..."),
+                            : (_isProcessing
+                                ? "Analyzing your answer..."
+                                : "Waiting for question to conclude...")),
                     style: TextStyle(
                       color: _currentAnswer.isNotEmpty ? Colors.white : Colors.white54,
                       fontStyle: _currentAnswer.isNotEmpty ? FontStyle.normal : FontStyle.italic,
                       fontSize: 13,
+                      height: 1.35,
                     ),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
@@ -1478,7 +1779,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
                         const Icon(Icons.touch_app_rounded, color: Color(0xFFFF8A00), size: 13),
                         const SizedBox(width: 4),
                         Text(
-                          "Finished? Tap 'Done Speaking' for instant evaluation (or wait 3s)",
+                          "Finished? Tap 'Done Speaking' for instant evaluation (or pause for 5s)",
                           style: TextStyle(
                             color: const Color(0xFFFF8A00).withValues(alpha: 0.9),
                             fontSize: 11,
@@ -1629,11 +1930,13 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
                       case 'code': _openLiveCodeEditor(); break;
                       case 'whiteboard': _openSystemDesignWhiteboard(); break;
                       case 'camera': _toggleCamera(); break;
-                      case 'mic': _startListening(); break;
+                      case 'mic': _retryListening(); break;
                       case 'voice_toggle':
                         setState(() {
                           _useInstantDeviceVoice = !_useInstantDeviceVoice;
                         });
+                        _speechGeneration++; // Abort whatever is currently being spoken
+                        _silenceAllSpeech();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             backgroundColor: const Color(0xFF1E1E2C),

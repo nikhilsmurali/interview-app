@@ -5,7 +5,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthService extends ChangeNotifier {
   FirebaseAuth? _auth;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  // Lazily created: google_sign_in_web asserts a client ID at construction time,
+  // and the web sign-in path uses Firebase's signInWithPopup instead.
+  late final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   User? _user;
   User? get user => _user;
@@ -64,7 +66,9 @@ class AuthService extends ChangeNotifier {
 
   Future<void> signOut() async {
     try {
-      await _googleSignIn.signOut();
+      if (!kIsWeb) {
+        await _googleSignIn.signOut();
+      }
       await _auth?.signOut();
       _user = null;
       notifyListeners();
