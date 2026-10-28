@@ -139,10 +139,14 @@ class _InterviewPrepScreenState extends State<InterviewPrepScreen> {
           role: widget.role,
           questions: _questions,
           difficulty: widget.difficulty,
-          camera: _cameras!.firstWhere(
-            (c) => c.lensDirection == CameraLensDirection.front,
-            orElse: () => _cameras!.first,
-          ),
+          // A camera is optional - if availableCameras() failed (webcam busy on
+          // Chrome) we start the interview audio-only instead of crashing.
+          camera: (_cameras?.isNotEmpty ?? false)
+              ? _cameras!.firstWhere(
+                  (c) => c.lensDirection == CameraLensDirection.front,
+                  orElse: () => _cameras!.first,
+                )
+              : null,
         ),
       ),
     );

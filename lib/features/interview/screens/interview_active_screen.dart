@@ -24,7 +24,7 @@ class InterviewActiveScreen extends StatefulWidget {
   final String interviewId;
   final String companyName;
   final String role;
-  final CameraDescription camera;
+  final CameraDescription? camera;
   final List<String> questions;
 
   const InterviewActiveScreen({
@@ -32,7 +32,7 @@ class InterviewActiveScreen extends StatefulWidget {
     required this.interviewId,
     required this.companyName,
     required this.role,
-    required this.camera,
+    this.camera,
     required this.questions,
     this.difficulty = 'Medium',
   });
@@ -45,8 +45,8 @@ class InterviewActiveScreen extends StatefulWidget {
 
 class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   // Camera & Video
-  late CameraController _cameraController;
-  late Future<void> _initializeControllerFuture;
+  CameraController? _cameraController;
+  Future<void> _initializeControllerFuture = Future<void>.value();
   late VideoPlayerController _avatarController;
   bool _isAvatarInitialized = false;
   bool _isCameraOff = false;
@@ -178,38 +178,69 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     }
   }
 
-  void _initCamera() {
-    _cameraController = CameraController(
-      widget.camera,
+  Future<void> _initCamera() async {
+    // A camera is optional: if none is available (or the webcam is busy on
+    // Chrome) the interview still runs audio-only instead of crashing.
+    CameraDescription? description = widget.camera;
+    if (description == null) {
+      try {
+        final cams = await availableCameras();
+        description = cams.isEmpty
+            ? null
+            : cams.firstWhere(
+                (c) => c.lensDirection == CameraLensDirection.front,
+                orElse: () => cams.first,
+              );
+      } catch (e) {
+        debugPrint("Camera lookup failed: $e");
+      }
+    }
+
+    if (description == null) {
+      debugPrint("No camera available - continuing without video.");
+      if (mounted) setState(() => _isCameraOff = true);
+      return;
+    }
+
+    final controller = CameraController(
+      description,
       ResolutionPreset.medium,
       enableAudio: false, // We use speech_to_text for audio
     );
-    _initializeControllerFuture = _cameraController.initialize().then((_) {
+    _cameraController = controller;
+
+    _initializeControllerFuture = controller.initialize().then((_) {
       if (mounted) setState(() {});
     }).catchError((err) async {
       debugPrint("Camera initialize error in active screen: $err. Retrying...");
       await Future.delayed(const Duration(milliseconds: 600));
       if (!mounted) return;
       try {
-        await _cameraController.dispose();
+        await controller.dispose();
       } catch (_) {}
 
       try {
         final cams = await availableCameras();
+        if (cams.isEmpty) {
+          if (mounted) setState(() => _isCameraOff = true);
+          return;
+        }
         final selectedCam = cams.firstWhere(
           (c) => c.lensDirection == CameraLensDirection.front,
-          orElse: () => cams.isNotEmpty ? cams.first : widget.camera,
+          orElse: () => cams.first,
         );
-        _cameraController = CameraController(
+        final retryController = CameraController(
           selectedCam,
           ResolutionPreset.medium,
           enableAudio: false,
         );
-        _initializeControllerFuture = _cameraController.initialize();
+        _cameraController = retryController;
+        _initializeControllerFuture = retryController.initialize();
         await _initializeControllerFuture;
         if (mounted) setState(() {});
       } catch (retryErr) {
         debugPrint("Camera retry error: $retryErr");
+        if (mounted) setState(() => _isCameraOff = true);
       }
     });
   }
@@ -1129,13 +1160,21 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
   }
 
   Future<void> _toggleCamera() async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) {
+      // No camera yet (or the webcam was busy): try to connect one.
+      await _initCamera();
+      if (mounted) {
+        setState(() =>
+            _isCameraOff = !(_cameraController?.value.isInitialized ?? false));
+      }
+      return;
+    }
     try {
-      if (_cameraController.value.isInitialized) {
-        if (_isCameraOff) {
-          await _cameraController.resumePreview();
-        } else {
-          await _cameraController.pausePreview();
-        }
+      if (_isCameraOff) {
+        await controller.resumePreview();
+      } else {
+        await controller.pausePreview();
       }
     } catch (e) {
       debugPrint("Toggle camera error: $e");
@@ -1149,7 +1188,7 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
     _silenceTimer?.cancel();
     _restartTimer?.cancel();
     _speechGeneration++; // Prevent any in-flight utterance from resuming
-    _cameraController.dispose();
+    _cameraController?.dispose();
     _avatarController.dispose();
     _elevenLabsService.dispose();
     _flutterTts.stop();
@@ -1519,17 +1558,19 @@ class _InterviewActiveScreenState extends State<InterviewActiveScreen> {
           FutureBuilder<void>(
             future: _initializeControllerFuture,
             builder: (context, snapshot) {
-              final isReady = _cameraController.value.isInitialized &&
+              final controller = _cameraController;
+              final isReady = controller != null &&
+                  controller.value.isInitialized &&
                   !_isCameraOff &&
                   !snapshot.hasError;
 
               if (isReady) {
                 return Center(
                   child: AspectRatio(
-                    aspectRatio: _cameraController.value.aspectRatio > 0
-                        ? _cameraController.value.aspectRatio
+                    aspectRatio: controller.value.aspectRatio > 0
+                        ? controller.value.aspectRatio
                         : (16 / 9),
-                    child: CameraPreview(_cameraController),
+                    child: CameraPreview(controller),
                   ),
                 );
               } else if (snapshot.hasError) {
